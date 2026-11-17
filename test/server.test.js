@@ -139,3 +139,13 @@ test('API: verificarea fiecărei afirmații și palmaresul', async () => {
   assert.ok(tr.pending > 0);
   assert.equal(tr.buckets.length, 5);
 });
+
+test('scriptul și stilurile au versiune în adresă (fără cache vechi după actualizări)', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  const v = /src="\/app\.js\?v=([0-9a-f]{10})"/.exec(html)?.[1];
+  assert.ok(v, 'app.js are versiune');
+  assert.match(html, new RegExp(`href="/style\\.css\\?v=${v}"`));
+  const js = await fetch(`${base}/app.js?v=${v}`);
+  assert.equal(js.status, 200);
+  assert.match(await js.text(), /renderEffortHint/);
+});

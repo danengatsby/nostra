@@ -2,7 +2,7 @@
 // Service worker: face aplicația instalabilă. Totul vine întâi de la server; copiile din cache se folosesc
 // doar fără conexiune. API-ul nu se pune niciodată în cache, ca previziunile să fie mereu cele actuale.
 
-const VERSION = 'nostra-v1';
+const VERSION = 'nostra-v2';
 const SHELL = ['/', '/style.css', '/app.js', '/icon.svg', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
@@ -35,5 +35,5 @@ self.addEventListener('fetch', (e) => {
       caches.open(VERSION).then((cache) => cache.put(req, copy));
     }
     return res;
-  }).catch(() => caches.match(req)));
+  }).catch(() => caches.match(req, { ignoreSearch: true }))); // fără rețea: orice versiune salvată
 });
