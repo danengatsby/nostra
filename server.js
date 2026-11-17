@@ -14,6 +14,8 @@ const jobs = require('./lib/jobs');
 const seo = require('./lib/seo');
 const verify = require('./lib/verify');
 const admin = require('./lib/admin');
+const payments = require('./lib/payments');
+const orders = require('./lib/orders');
 const { t } = require('./lib/messages');
 
 const PORT = Number(process.env.PORT || 3200);
@@ -39,12 +41,31 @@ app.use((req, res, next) => {
   next();
 });
 
+// Webhook Stripe: plata confirmată direct de Stripe (semnătura se verifică pe corpul brut al cererii).
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  let orderId;
+  try {
+    orderId = payments.webhookOrderId(req.body, req.get('stripe-signature'));
+  } catch (e) {
+    console.warn('[webhook] respins:', e.message);
+    return res.status(400).send('invalid');
+  }
+  try {
+    if (orderId) await orders.confirm(orderId);
+    res.json({ received: true });
+  } catch (e) {
+    console.error('[webhook]', e.message);
+    res.status(500).send('error'); // Stripe reîncearcă
+  }
+});
+
 app.use(express.json({ limit: '8kb' }));
 
 // --- API ---
 
 app.get('/api/catalog', (req, res) => {
-  res.set('Cache-Control', 'public, max-age=3600').json(catalog.publicCatalog());
+  const payment = { required: payments.mode() !== 'off', price: payments.priceLabel() };
+  res.set('Cache-Control', 'public, max-age=300').json({ ...catalog.publicCatalog(), payment });
 });
 
 const uiLang = (v) => (v === 'en' ? 'en' : 'ro');
@@ -77,7 +98,7 @@ function etaSeconds() {
   return d.length ? Math.max(15, Math.round(d.reduce((a, b) => a + b, 0) / d.length / 1000)) : 120;
 }
 
-app.post('/api/predict', (req, res) => {
+app.post('/api/predict', async (req, res) => {
   const ui = uiLang(req.body?.ui);
   let request;
   try {
@@ -86,11 +107,28 @@ app.post('/api/predict', (req, res) => {
     return res.status(400).json({ error: e.message });
   }
   try {
+    if (payments.mode() !== 'off') {
+      // Cu plăți active, previziunea pornește abia după ce Stripe confirmă plata.
+      return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req))), etaSec: etaSeconds() });
+    }
     res.json({ ...jobs.submit(request, req.ip, ui), etaSec: etaSeconds() });
   } catch (e) {
     if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: e.message });
-    console.error('[predict]', e);
-    res.status(500).json({ error: t('internal', ui) });
+    console.error('[predict]', e?.message || e);
+    res.status(500).json({ error: t(payments.mode() !== 'off' ? 'paymentError' : 'internal', ui) });
+  }
+});
+
+// Întoarcerea de pe pagina de plată: verificăm plata la Stripe și pornim previziunea.
+app.post('/api/orders/:id/confirm', async (req, res) => {
+  const ui = uiLang(req.body?.ui);
+  try {
+    const st = await orders.confirm(req.params.id);
+    if (!st) return res.status(404).json({ error: t('orderNotFound', ui) });
+    res.set('Cache-Control', 'no-store').json(st);
+  } catch (e) {
+    console.error('[confirm]', e?.message || e);
+    res.status(502).json({ error: t('unavailable', ui) });
   }
 });
 
@@ -141,7 +179,7 @@ app.get('/api/p/:id', (req, res) => {
   const refreshable = Date.now() - Date.parse(latest) > catalog.HORIZON[request.horizon].cacheHours * 3600000;
   const items = new Map((verification?.items || []).map((it) => [it.index, it]));
   res.set('Cache-Control', 'public, max-age=300').json({
-    id, createdAt, request, prediction, history, refreshable,
+    id, createdAt, request, prediction, history, refreshable, refunded: meta.refunded === true,
     // Pentru fiecare afirmație: data verificării și, dacă a fost verificată, rezultatul.
     checks: prediction.predictions.map((p, i) => {
       const it = items.get(i);
@@ -183,7 +221,7 @@ app.get('/og/:name.png', async (req, res) => {
 });
 
 app.get('/robots.txt', (req, res) => {
-  res.type('text/plain').send(`User-agent: *\nDisallow: /api/\nSitemap: ${seo.BASE_URL}/sitemap.xml\n`);
+  res.type('text/plain').send(`User-agent: *\nDisallow: /api/\nDisallow: /pay/\nDisallow: /admin\nSitemap: ${seo.BASE_URL}/sitemap.xml\n`);
 });
 
 app.get('/sitemap.xml', (req, res) => {
@@ -201,6 +239,7 @@ app.use(express.static(PUBLIC, { index: false, maxAge: '1h' }));
 const sendPage = (res, rec) => res.set('Cache-Control', 'no-cache').type('html').send(seo.renderPage(rec));
 app.get('/', (req, res) => sendPage(res, null));
 app.get('/p/:id', (req, res) => sendPage(res, store.get(req.params.id)));
+app.get('/pay/:id', (req, res) => res.set('X-Robots-Tag', 'noindex').type('html').set('Cache-Control', 'no-store').send(seo.renderPage(null)));
 app.use((req, res) => res.status(404).type('html').send(seo.renderPage(null)));
 
 app.use((err, req, res, next) => {
@@ -210,11 +249,14 @@ app.use((err, req, res, next) => {
 });
 
 store.init();
+orders.init();
 if (require.main === module) {
   if (process.env.DEMO_MODE !== '1' && !process.env.ANTHROPIC_API_KEY) {
     console.warn('ATENȚIE: ANTHROPIC_API_KEY lipsește din .env — previziunile vor eșua. (Pentru probe: DEMO_MODE=1)');
   }
   verify.start();
+  orders.startReconciler();
+  if (payments.mode() !== 'off') console.log(`Plăți: ${payments.mode()} (${payments.priceLabel()} / previziune)`);
   app.listen(PORT, HOST, () => console.log(`Nostradamus pornit pe http://${HOST}:${PORT}${process.env.DEMO_MODE === '1' ? ' (DEMO)' : ''}`));
 }
 

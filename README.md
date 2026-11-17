@@ -18,6 +18,10 @@ După data fiecărei afirmații, oracolul **își verifică singur previziunile*
 marchează afirmația ca adevărată, falsă sau încă nelămurită, cu dovada și sursa. Prima pagină arată palmaresul:
 procentul de previziuni corecte, scorul Brier și calibrarea (dintre afirmațiile date cu 70–79%, câte s-au adeverit).
 
+**Plata:** cu `STRIPE_SECRET_KEY` în `.env`, butonul „Consultă oracolul — 1 €” duce vizitatorul pe pagina de
+plată Stripe, iar previziunea pornește doar după ce plata e confirmată. Dacă oracolul nu poate face previziunea
+(eroare) sau refuză întrebarea, banii se returnează automat. Fără cheie, previziunile sunt gratuite.
+
 Mai are: interfață în română și engleză, previziuni **private** (în afara listelor publice și a indexării),
 istoricul aceleiași întrebări puse la momente diferite (cum s-a schimbat probabilitatea scenariului de bază),
 timp estimat și notificare în browser când previziunea e gata, distribuire (WhatsApp, Facebook, X, Telegram),
@@ -57,6 +61,12 @@ npm test
   de cel mult 4 ori. Rezultatul se salvează în fișierul previziunii.
 - **Previzualizări și indexare** (`lib/seo.js`) – serverul pune în pagina `/p/<id>` titlul, rezumatul și imaginea
   1200×630 (desenată ca SVG, rasterizată cu ffmpeg și salvată în `data/og/`). Există și `sitemap.xml`, `robots.txt`.
+- **Plata** (`lib/payments.js`, `lib/orders.js`) – Stripe Checkout, prețul fixat pe server (`PRICE_EUR_CENTS`).
+  Limitele (bugetul zilnic, cererile pe oră) se verifică înainte de plată, ca nimeni să nu plătească pentru o
+  previziune pe care n-o mai putem face. Plata se confirmă pe trei căi, toate fără dubluri: întoarcerea de pe
+  Stripe (`/pay/<comandă>`), webhook-ul `/api/stripe/webhook` (opțional) și o verificare la 2 minute a comenzilor
+  în așteptare. Comenzile se salvează în `data/orders/`. Previziunile plătite rulează chiar dacă bugetul zilnic
+  s-a epuizat între timp.
 - **Administrare** (`/admin`, `lib/admin.js`) – protejată cu parola `ADMIN_PASSWORD` din `.env` (orice nume de
   utilizator): bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
   întrebările private) și erorile recente (`data/events.json`).
@@ -102,8 +112,10 @@ Cererile care eșuează din cauza serviciului nu consumă din limita vizitatorul
 
 | Metodă | Rută | Descriere |
 |---|---|---|
-| `GET` | `/api/catalog` | domenii, orizonturi, regiuni |
-| `POST` | `/api/predict` | `{domain, horizon, region, lang, question, private?, ui?}` → `{id, cached, etaSec}` |
+| `GET` | `/api/catalog` | domenii, orizonturi, regiuni, eforturi și dacă se cere plata (`payment`) |
+| `POST` | `/api/predict` | `{domain, horizon, region, lang, question, effort?, private?, ui?}` → `{id, cached, etaSec}` sau, cu plată, `{orderId, checkoutUrl}` |
+| `POST` | `/api/orders/:id/confirm` | verifică plata la Stripe și pornește previziunea → `{status, predictionId}` |
+| `POST` | `/api/stripe/webhook` | confirmarea plății trimisă de Stripe (semnătură verificată) |
 | `GET` | `/api/predict/:id/events` | flux SSE: `status`, `search`, `results`, `fetch`, `thought`, `done`, `error` |
 | `GET` | `/api/p/:id` | previziunea completă, cu verificarea fiecărei afirmații (`checks`), istoricul întrebării (`history`) și dacă se poate actualiza (`refreshable`) |
 | `GET` | `/api/recent` | ultimele previziuni |

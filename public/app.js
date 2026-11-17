@@ -20,7 +20,14 @@
       questionHint: 'Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.',
       stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului', effort: 'Efortul oracolului',
       private: 'Previziune privată', privateHint: 'Nu apare în lista publică și nu e indexată de motoarele de căutare. O vede doar cine are linkul.',
-      submit: 'Consultă oracolul', duration: 'Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.',
+      submit: 'Consultă oracolul', submitPaid: (p) => `Consultă oracolul — ${p}`,
+      payHint: (p) => `Plătești ${p} pe pagina securizată Stripe, apoi oracolul începe lucrul. Dacă nu poate răspunde, banii se returnează automat.`,
+      toPayment: 'Te ducem la pagina de plată…', confirming: 'Confirmăm plata…',
+      payPending: 'Plata nu a fost confirmată încă. Dacă ai plătit, previziunea pornește automat — poți reveni la acest link.',
+      payExpired: 'Plata nu a fost finalizată, iar pagina de plată a expirat. Nu ți s-a luat niciun ban.',
+      payCanceled: 'Plata a fost anulată. Nu ți s-a luat niciun ban.',
+      refundedNote: 'Plata pentru această previziune a fost returnată automat.',
+      duration: 'Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.',
       trackTitle: 'Palmaresul oracolului', loading: 'Se încarcă…', recentTitle: 'Previziuni recente',
       recentEmpty: 'Încă nu există previziuni. Fii primul care consultă oracolul.',
       preparing: 'Oracolul se pregătește…', notify: '🔔 Anunță-mă când e gata', notifyOn: '🔔 Te anunțăm când e gata',
@@ -66,7 +73,14 @@
       questionHint: 'Without a question, the oracle tells you what matters most to expect in the chosen domain and region.',
       stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language', effort: 'Oracle effort',
       private: 'Private forecast', privateHint: 'Not shown in the public list and not indexed by search engines. Only people with the link can see it.',
-      submit: 'Consult the oracle', duration: 'Usually takes 1–3 minutes: the oracle searches and reads current sources before answering.',
+      submit: 'Consult the oracle', submitPaid: (p) => `Consult the oracle — ${p}`,
+      payHint: (p) => `You pay ${p} on Stripe’s secure page, then the oracle starts working. If it cannot answer, you are refunded automatically.`,
+      toPayment: 'Taking you to the payment page…', confirming: 'Confirming your payment…',
+      payPending: 'The payment has not been confirmed yet. If you paid, the forecast will start automatically — you can come back to this link.',
+      payExpired: 'The payment was not completed and the payment page has expired. You have not been charged.',
+      payCanceled: 'The payment was canceled. You have not been charged.',
+      refundedNote: 'The payment for this forecast was refunded automatically.',
+      duration: 'Usually takes 1–3 minutes: the oracle searches and reads current sources before answering.',
       trackTitle: 'The oracle’s track record', loading: 'Loading…', recentTitle: 'Recent forecasts',
       recentEmpty: 'No forecasts yet. Be the first to consult the oracle.',
       preparing: 'The oracle is getting ready…', notify: '🔔 Notify me when it’s ready', notifyOn: '🔔 We’ll notify you when it’s ready',
@@ -135,12 +149,24 @@
     get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* stocare indisponibilă */ } },
   };
+  const sessionStore = {
+    get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* indisponibil */ } },
+    del: (k) => { try { sessionStorage.removeItem(k); } catch { /* indisponibil */ } },
+  };
+  eta = Number(sessionStore.get('eta')) || eta;
   let ui = store.get('ui') || ((navigator.language || 'ro').toLowerCase().startsWith('ro') ? 'ro' : 'en');
   const tr = (key) => U[ui][key];
 
   function applyUi() {
     document.documentElement.lang = ui;
     document.querySelectorAll('[data-i18n]').forEach((n) => { n.textContent = tr(n.dataset.i18n); });
+    const pay = catalog?.payment;
+    if (pay?.required) {
+      $('#submit').textContent = tr('submitPaid')(pay.price);
+      $('#pay-hint').textContent = tr('payHint')(pay.price);
+    }
+    $('#pay-hint').hidden = !pay?.required;
     document.querySelectorAll('[data-i18n-ph]').forEach((n) => { n.placeholder = tr(n.dataset.i18nPh); });
     document.querySelectorAll('[data-i18n-aria]').forEach((n) => n.setAttribute('aria-label', tr(n.dataset.i18nAria)));
     const btn = $('#ui-lang');
@@ -250,9 +276,63 @@
     const res = await api('/api/predict', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ui }),
     });
-    if (res.etaSec) eta = res.etaSec;
+    if (res.etaSec) { eta = res.etaSec; sessionStore.set('eta', String(eta)); }
+    if (res.checkoutUrl) {
+      // Plata: formularul se păstrează, ca vizitatorul să-l regăsească dacă anulează plata.
+      sessionStore.set('form', JSON.stringify(body));
+      toast(tr('toPayment'));
+      location.assign(res.checkoutUrl);
+      return;
+    }
     history.pushState({}, '', `/p/${res.id}`);
     follow(res.id);
+  }
+
+  /** Întoarcerea de pe pagina de plată: confirmăm plata, apoi urmărim previziunea. */
+  async function confirmPayment(orderId) {
+    show('progress');
+    $('#log').replaceChildren();
+    $('#phase').textContent = tr('confirming');
+    $('#progress-sub').textContent = '';
+    $('#eta-text').textContent = '';
+    $('#elapsed').textContent = '';
+    $('#notify').hidden = true;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      let st;
+      try {
+        st = await api(`/api/orders/${encodeURIComponent(orderId)}/confirm`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ui }),
+        });
+      } catch (ex) {
+        return fail(ex.message);
+      }
+      if (location.pathname !== `/pay/${orderId}`) return; // vizitatorul a plecat între timp
+      if (st.predictionId) {
+        sessionStore.del('form');
+        history.replaceState({}, '', `/p/${st.predictionId}`);
+        return follow(st.predictionId);
+      }
+      if (st.status === 'expired') return fail(tr('payExpired'));
+      await new Promise((r) => setTimeout(r, 3000)); // plata poate fi confirmată cu câteva secunde întârziere
+    }
+    fail(tr('payPending'));
+  }
+
+  function restoreForm() {
+    let body = null;
+    try { body = JSON.parse(sessionStore.get('form') || 'null'); } catch { /* ignorăm */ }
+    if (!body) return;
+    const check = (name, value) => { const i = document.querySelector(`input[name=${name}][value="${value}"]`); if (i) i.checked = true; };
+    check('domain', body.domain);
+    check('horizon', body.horizon);
+    check('effort', body.effort);
+    if (body.region) $('#region').value = body.region;
+    if (body.lang) $('#lang').value = body.lang;
+    $('#question').value = body.question || '';
+    $('#question').dispatchEvent(new Event('input'));
+    $('#private').checked = !!body.private;
+    renderExamples();
+    renderEffortHint();
   }
 
   async function onSubmit(e) {
@@ -460,7 +540,8 @@
       rq.private ? el('span', { class: 'tag', text: `🔒 ${t.privateTag}` }) : null);
 
     if (p.declined) {
-      root.append(el('section', { class: 'card declined' }, tags, el('h1', { text: t.declinedTitle }), el('p', { text: p.declined_reason || p.summary })));
+      root.append(el('section', { class: 'card declined' }, tags, el('h1', { text: t.declinedTitle }), el('p', { text: p.declined_reason || p.summary }),
+        rec.refunded ? el('p', { class: 'muted', text: tr('refundedNote') }) : null));
       return;
     }
 
@@ -586,9 +667,17 @@
     if (source) { source.close(); source = null; }
     clearInterval(timer);
     const m = /^\/p\/([A-Za-z0-9_-]{8,32})\/?$/.exec(location.pathname);
+    const pay = /^\/pay\/([A-Za-z0-9_-]{16,40})\/?$/.exec(location.pathname);
     if (m) {
       follow(m[1]);
+    } else if (pay) {
+      confirmPayment(pay[1]);
     } else {
+      if (new URLSearchParams(location.search).has('anulat')) {
+        history.replaceState({}, '', '/');
+        restoreForm();
+        toast(tr('payCanceled'));
+      }
       document.title = tr('defaultTitle');
       show('form');
       loadTrack();
@@ -668,6 +757,7 @@
 
   api('/api/catalog').then((c) => {
     catalog = c;
+    applyUi();
     buildForm();
     route();
   }).catch(() => fail(tr('loadFail')));
