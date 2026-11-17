@@ -5,7 +5,9 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const envFile = path.join(__dirname, '.env');
-if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
+// În teste (node --test) .env NU se încarcă: altfel testele ar folosi cheile reale (Stripe live, email, API).
+const underTest = process.env.NODE_ENV === 'test' || !!process.env.NODE_TEST_CONTEXT;
+if (!underTest && fs.existsSync(envFile)) process.loadEnvFile(envFile);
 
 const express = require('express');
 const catalog = require('./lib/catalog');
@@ -16,6 +18,7 @@ const verify = require('./lib/verify');
 const admin = require('./lib/admin');
 const payments = require('./lib/payments');
 const orders = require('./lib/orders');
+const legal = require('./lib/legal');
 const { t } = require('./lib/messages');
 
 const PORT = Number(process.env.PORT || 3200);
@@ -65,7 +68,7 @@ app.use(express.json({ limit: '8kb' }));
 
 app.get('/api/catalog', (req, res) => {
   const payment = { required: payments.mode() !== 'off', price: payments.priceLabel() };
-  res.set('Cache-Control', 'public, max-age=300').json({ ...catalog.publicCatalog(), payment });
+  res.set('Cache-Control', 'public, max-age=300').json({ ...catalog.publicCatalog(), payment, contact: legal.company().email });
 });
 
 const uiLang = (v) => (v === 'en' ? 'en' : 'ro');
@@ -108,6 +111,8 @@ app.post('/api/predict', async (req, res) => {
   }
   try {
     if (payments.mode() !== 'off') {
+      // Fără acordul bifat (termeni + furnizare imediată a conținutului digital) nu se deschide plata.
+      if (req.body?.consent !== true) return res.status(400).json({ error: t('consentRequired', ui) });
       // Cu plăți active, previziunea pornește abia după ce Stripe confirmă plata.
       return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req))), etaSec: etaSeconds() });
     }
@@ -203,6 +208,9 @@ app.get('/api/recent', (req, res) => {
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // --- Interfața ---
+
+// Termeni și confidențialitate.
+app.get(['/termeni', '/terms'], (req, res) => res.set('Cache-Control', 'public, max-age=600').type('html').send(legal.render()));
 
 // Administrare (parola din ADMIN_PASSWORD).
 app.get('/admin', admin.auth, admin.page);

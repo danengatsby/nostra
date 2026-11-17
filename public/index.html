@@ -76,6 +76,12 @@
           <p id="effort-hint" class="hint"></p>
         </fieldset>
 
+        <label id="consent-row" class="check-row" hidden>
+          <input type="checkbox" id="consent" name="consent">
+          <span><span data-i18n="consent">Sunt de acord cu Termenii și confidențialitatea și cer furnizarea imediată a previziunii; înțeleg că, odată furnizată, nu mai pot cere retragerea din contract.</span>
+            <a href="/termeni" target="_blank" rel="noopener" data-i18n="readTerms">Citește termenii</a></span>
+        </label>
+
         <p id="form-error" class="error" role="alert" hidden></p>
         <button id="submit" class="btn-primary" type="submit" data-i18n="submit">Consultă oracolul</button>
         <p id="pay-hint" class="hint center" hidden></p>
@@ -134,6 +140,7 @@
   </main>
 
   <footer class="site-footer">
+    <p class="legal-links"><a href="/termeni" data-i18n="termsLink">Termeni și confidențialitate</a> · <a id="contact-link" href="/termeni" data-i18n="contact">Contact</a> · <a href="https://anpc.ro/" rel="noopener" target="_blank">ANPC</a> · <a href="https://anpc.ro/ce-este-sal/" rel="noopener" target="_blank">ANPC – SAL</a></p>
     <p data-i18n="disclaimer">Previziunile sunt estimări probabilistice generate automat de inteligență artificială pe baza surselor publice găsite la momentul cererii. Nu sunt certitudini și nu reprezintă consultanță financiară, medicală sau juridică.</p>
   </footer>
   <div id="toast" class="toast" role="status" hidden></div>

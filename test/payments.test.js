@@ -11,6 +11,11 @@ const { EventEmitter } = require('node:events');
 process.env.DEMO_MODE = '1';
 process.env.DEMO_STEP_MS = '2';
 process.env.PAYMENT_DEMO = '1';
+process.env.PAYMENT_DEMO_EMAIL = 'client@example.com';
+process.env.MAIL_CAPTURE = '1'; // emailurile se păstrează în memorie, nu se trimit
+process.env.COMPANY_NAME = 'Firma Test SRL';
+process.env.COMPANY_CUI = '123';
+process.env.CONTACT_EMAIL = 'contact@example.com';
 process.env.RATE_PER_HOUR = '50';
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'nostra-pay-'));
 delete process.env.STRIPE_SECRET_KEY;
@@ -35,7 +40,8 @@ test.after(() => {
   fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
 });
 
-const post = (url, body) => fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+// La /api/predict se trimite implicit și acordul bifat (obligatoriu cu plata activă).
+const post = (url, body) => fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(url === '/api/predict' ? { consent: true, ...body } : body) });
 const Q = { domain: 'economie', horizon: '1m', region: 'ro', lang: 'ro' };
 const finish = async (id) => (await (await fetch(`${base}/api/predict/${id}/events`)).text());
 
@@ -146,7 +152,7 @@ test('Stripe: sesiunea de plată cere 1 € pentru comanda corectă, iar plata s
   payments._setClient({
     checkout: { sessions: {
       create: async (p) => { calls.create = p; return { id: 'cs_test_1', url: 'https://checkout.stripe.com/c/pay/cs_test_1' }; },
-      retrieve: async (id) => ({ id, client_reference_id: calls.create.client_reference_id, amount_total: calls.amount ?? 100, currency: 'eur', payment_status: 'paid', status: 'complete', payment_intent: 'pi_1' }),
+      retrieve: async (id) => ({ id, client_reference_id: calls.create.client_reference_id, amount_total: calls.amount ?? 100, currency: 'eur', payment_status: 'paid', status: 'complete', payment_intent: 'pi_1', customer_details: { email: 'platitor@example.com' } }),
     } },
     refunds: { create: async (p, o) => { calls.refund = [p, o]; return { id: 're_1' }; } },
   });
@@ -166,7 +172,7 @@ test('Stripe: sesiunea de plată cere 1 € pentru comanda corectă, iar plata s
     assert.equal(c.cancel_url, `https://nostradamus.my/?anulat=${order.id}`);
 
     order.session = session;
-    assert.deepEqual(await payments.checkPaid(order), { paid: true, paymentIntent: 'pi_1', expired: false });
+    assert.deepEqual(await payments.checkPaid(order), { paid: true, paymentIntent: 'pi_1', expired: false, email: 'platitor@example.com' });
     calls.amount = 50; // altă sumă decât prețul: nu e acceptată
     assert.equal((await payments.checkPaid(order)).paid, false);
 
@@ -186,4 +192,55 @@ test('administrarea arată încasările și comenzile', async () => {
   assert.match(html, /restituite automat/);
   assert.match(html, /întrebare refuzată/);
   assert.match(html, /Fereastră închisă\?/);
+});
+
+test('fără acordul bifat nu se deschide plata; acordul se salvează în comandă', async () => {
+  const res = await post('/api/predict', { ...Q, question: 'Fără acord?', consent: false, ui: 'en' });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /tick the box/);
+
+  const ok = await (await post('/api/predict', { ...Q, question: 'Cu acord?' })).json();
+  const o = orders.get(ok.orderId);
+  assert.ok(o.consent.at);
+  assert.match(o.consent.terms, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('emailuri: linkul previziunii după plată și anunțul de restituire', async () => {
+  const mail = require('../lib/mail');
+  const before = mail._sent.length;
+  const { orderId } = await (await post('/api/predict', { ...Q, question: 'Email cu link?' })).json();
+  const { predictionId } = await (await post(`/api/orders/${orderId}/confirm`, {})).json();
+  await finish(predictionId);
+  await new Promise((r) => setTimeout(r, 50));
+  const ready = mail._sent.slice(before).find((m) => m.text.includes(`/p/${predictionId}`));
+  assert.ok(ready, 'emailul cu linkul a plecat');
+  assert.equal(ready.to, 'client@example.com');
+  assert.match(ready.subject, /Previziunea ta Nostradamus/);
+  assert.match(ready.html, /Firma Test SRL · CUI 123/);
+  assert.ok(orders.get(orderId).emailSentAt);
+  assert.equal(orders.get(orderId).email, 'client@example.com');
+
+  // Restituirile din testele anterioare au trimis și ele anunțul.
+  assert.ok(mail._sent.some((m) => m.subject === 'Nostradamus: plata ți-a fost returnată' && /erori tehnice/.test(m.text)));
+  assert.ok(mail._sent.some((m) => m.subject === 'Nostradamus: plata ți-a fost returnată' && /nu poate răspunde/.test(m.text)));
+  // Un al doilea apel de confirmare nu retrimite emailul.
+  const n = mail._sent.length;
+  await post(`/api/orders/${orderId}/confirm`, {});
+  await orders.reconcile();
+  assert.equal(mail._sent.length, n);
+});
+
+test('pagina de termeni: firma, prețul, dreptul de retragere, ANPC; linkuri în subsol', async () => {
+  const html = await (await fetch(`${base}/termeni`)).text();
+  assert.match(html, /Firma Test SRL/);
+  assert.match(html, /CUI 123/);
+  assert.match(html, /1 €/);
+  assert.match(html, /OUG 34\/2014, art\. 16 lit\. m/);
+  assert.match(html, /anpc\.ro/);
+  assert.match(html, /Terms and privacy/);
+  const home = await (await fetch(`${base}/`)).text();
+  assert.match(home, /href="\/termeni"/);
+  assert.match(home, /id="consent"/);
+  const cat = await (await fetch(`${base}/api/catalog`)).json();
+  assert.equal(cat.contact, 'contact@example.com');
 });

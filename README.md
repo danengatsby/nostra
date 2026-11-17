@@ -34,7 +34,7 @@ npm install
 cp .env.example .env        # apoi completează ANTHROPIC_API_KEY
 npm start                   # http://127.0.0.1:3200
 npm run dev                 # mod demonstrativ: rezultate simulate, fără cheie API și fără costuri
-npm test
+npm test                    # nu încarcă .env: testele nu ating Stripe, emailul sau API-ul real
 ```
 
 ## Cum funcționează
@@ -72,6 +72,11 @@ npm test
   Stripe (`/pay/<comandă>`), webhook-ul `/api/stripe/webhook` (opțional) și o verificare la 2 minute a comenzilor
   în așteptare. Comenzile se salvează în `data/orders/`. Previziunile plătite rulează chiar dacă bugetul zilnic
   s-a epuizat între timp.
+- **Termeni, acord, emailuri** (`lib/legal.js`, `lib/mail.js`) – pagina `/termeni` (română și engleză) se generează din
+  `COMPANY_NAME`, `COMPANY_CUI`, `CONTACT_EMAIL`. Cu plata activă, formularul cere bifa de acord (termeni + furnizarea
+  imediată a conținutului digital, OUG 34/2014 art. 16 lit. m); fără ea serverul nu deschide plata, iar acordul se
+  salvează în comandă. După plată, clientul primește pe emailul folosit la Stripe linkul previziunii (sau anunțul de
+  restituire), prin SMTP (`SMTP_*`, `MAIL_FROM`); dacă trimiterea eșuează, se reîncearcă la verificarea periodică.
 - **Administrare** (`/admin`, `lib/admin.js`) – protejată cu parola `ADMIN_PASSWORD` din `.env` (orice nume de
   utilizator): bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
   întrebările private) și erorile recente (`data/events.json`).

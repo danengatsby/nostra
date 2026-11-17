@@ -23,6 +23,9 @@
       submit: 'Consultă oracolul', submitPaid: (p) => `Consultă oracolul — ${p}`,
       payHint: (p) => `Plătești ${p} pe pagina securizată Stripe, apoi oracolul începe lucrul. Dacă nu poate răspunde, banii se returnează automat.`,
       toPayment: 'Te ducem la pagina de plată…', confirming: 'Confirmăm plata…',
+      consent: 'Sunt de acord cu Termenii și confidențialitatea și cer furnizarea imediată a previziunii; înțeleg că, odată furnizată, nu mai pot cere retragerea din contract.',
+      readTerms: 'Citește termenii', termsLink: 'Termeni și confidențialitate', contact: 'Contact',
+      consentMissing: 'Bifează acordul cu termenii înainte de plată.',
       payPending: 'Plata nu a fost confirmată încă. Dacă ai plătit, previziunea pornește automat — poți reveni la acest link.',
       payExpired: 'Plata nu a fost finalizată, iar pagina de plată a expirat. Nu ți s-a luat niciun ban.',
       payCanceled: 'Plata a fost anulată. Nu ți s-a luat niciun ban.',
@@ -76,6 +79,9 @@
       submit: 'Consult the oracle', submitPaid: (p) => `Consult the oracle — ${p}`,
       payHint: (p) => `You pay ${p} on Stripe’s secure page, then the oracle starts working. If it cannot answer, you are refunded automatically.`,
       toPayment: 'Taking you to the payment page…', confirming: 'Confirming your payment…',
+      consent: 'I agree to the Terms and privacy policy and request immediate supply of the forecast; I understand that once it is supplied I can no longer withdraw from the contract.',
+      readTerms: 'Read the terms', termsLink: 'Terms and privacy', contact: 'Contact',
+      consentMissing: 'Please tick the box accepting the terms before paying.',
       payPending: 'The payment has not been confirmed yet. If you paid, the forecast will start automatically — you can come back to this link.',
       payExpired: 'The payment was not completed and the payment page has expired. You have not been charged.',
       payCanceled: 'The payment was canceled. You have not been charged.',
@@ -169,6 +175,8 @@
       $('#pay-hint').textContent = tr('payHint')(pay.price);
     }
     $('#pay-hint').hidden = !pay?.required;
+    $('#consent-row').hidden = !pay?.required;
+    if (catalog?.contact) $('#contact-link').href = `mailto:${catalog.contact}`;
     document.querySelectorAll('[data-i18n-ph]').forEach((n) => { n.placeholder = tr(n.dataset.i18nPh); });
     document.querySelectorAll('[data-i18n-aria]').forEach((n) => n.setAttribute('aria-label', tr(n.dataset.i18nAria)));
     const btn = $('#ui-lang');
@@ -341,10 +349,17 @@
     e.preventDefault();
     const err = $('#form-error');
     err.hidden = true;
+    if (catalog.payment?.required && !$('#consent').checked) {
+      err.textContent = tr('consentMissing');
+      err.hidden = false;
+      $('#consent').focus();
+      return;
+    }
     const btn = $('#submit');
     btn.disabled = true;
     try {
       await startPrediction({
+        consent: $('#consent').checked,
         domain: currentDomain(),
         horizon: (document.querySelector('input[name=horizon]:checked') || {}).value,
         region: $('#region').value,
@@ -512,6 +527,15 @@
         refresh.disabled = true;
         try {
           const { domain, horizon, region, lang: l, question, effort } = rec.request;
+          if (catalog.payment?.required) {
+            // Cu plată, acordul se dă în formular: îl precompletăm și ducem vizitatorul acolo.
+            sessionStore.set('form', JSON.stringify({ domain, horizon, region, lang: l, question, effort, private: rec.request.private === true }));
+            history.pushState({}, '', '/?refresh=1');
+            route();
+            restoreForm();
+            $('#consent').focus();
+            return;
+          }
           await startPrediction({ domain, horizon, region, lang: l, question, effort, private: rec.request.private === true });
         } catch (ex) {
           toast(ex.message);
