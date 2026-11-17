@@ -252,6 +252,10 @@ textarea:focus, select:focus { border-color: var(--gold); outline: none; }
 .btn-small:hover { border-color: var(--gold); }
 .btn-compact { padding: 8px 14px; font-size: .9rem; }
 
+/* Efortul oracolului */
+.effort-field { margin-bottom: 20px; }
+.effort-field .seg { flex: 1 1 0; }
+
 /* Opțiunea „privată” */
 .check-row { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 20px; cursor: pointer; }
 .check-row input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--gold); flex: none; }

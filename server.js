@@ -63,6 +63,7 @@ function parseRequest(body = {}, ui = 'ro') {
     question: typeof body.question === 'string' ? body.question.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').replace(/\s+/g, ' ').trim() : '',
   };
   if (body.private === true) req.private = true; // nu apare în listele publice și nu e indexată
+  req.effort = catalog.EFFORT_IDS.includes(body.effort) ? body.effort : catalog.defaultEffort();
   if (!req.domain) throw new Error(t('pickDomain', ui));
   if (!req.horizon) throw new Error(t('pickHorizon', ui));
   if (req.question.length > 500) throw new Error(t('questionTooLong', ui));

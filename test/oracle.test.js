@@ -163,3 +163,17 @@ test('consumul se atașează și erorilor, pentru buget', async () => {
   } } } });
   await assert.rejects(oracle.runOracle(REQ, () => {}), (err) => 'usage' in err);
 });
+
+test('efortul ales de vizitator ajunge la model; implicit cel din .env', async () => {
+  const run = async (effort) => {
+    const calls = [];
+    oracle._setClient(fakeClient([{ stop_reason: 'end_turn', usage: {}, content: [{ type: 'text', text: `<prediction>${JSON.stringify(VALID)}</prediction>` }] }], calls));
+    const { meta } = await oracle.runOracle({ ...REQ, effort }, () => {});
+    return [calls[0].output_config.effort, meta.effort];
+  };
+  assert.deepEqual(await run('low'), ['low', 'low']);
+  assert.deepEqual(await run('high'), ['high', 'high']);
+  process.env.ORACLE_EFFORT = 'medium';
+  assert.deepEqual(await run(undefined), ['medium', 'medium']);
+  assert.deepEqual(await run('max'), ['medium', 'medium'], 'valorile din afara listei nu trec');
+});

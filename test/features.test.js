@@ -118,3 +118,22 @@ test('aplicația instalabilă: manifest, service worker, pictograme', async () =
   assert.equal(sw.headers.get('cache-control'), 'no-cache');
   assert.match(await sw.text(), /addEventListener\('fetch'/);
 });
+
+test('efortul: în catalog, validat la cerere și separat în cache', async () => {
+  const cat = await (await fetch(`${base}/api/catalog`)).json();
+  assert.deepEqual(cat.efforts.map((e) => e.id), ['low', 'medium', 'high']);
+  assert.ok(['low', 'medium', 'high'].includes(cat.defaultEffort));
+
+  const body = { ...Q, question: 'Efort?' };
+  const low = await (await post({ ...body, effort: 'low' })).json();
+  await finish(low.id);
+  const high = await (await post({ ...body, effort: 'high' })).json();
+  assert.notEqual(high.id, low.id, 'aceeași întrebare cu alt efort nu vine din cache');
+  await finish(high.id);
+  assert.equal((await (await post({ ...body, effort: 'low' })).json()).id, low.id);
+
+  const odd = await (await post({ ...body, question: 'Efort ciudat?', effort: 'maxim' })).json();
+  await finish(odd.id);
+  const rec = await (await fetch(`${base}/api/p/${odd.id}`)).json();
+  assert.equal(rec.request.effort, cat.defaultEffort);
+});

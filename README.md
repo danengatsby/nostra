@@ -77,7 +77,7 @@ Cererile care eșuează din cauza serviciului nu consumă din limita vizitatorul
 | `DAILY_LIMIT` | 300 | previziuni noi pe zi, în total |
 | `MAX_CONCURRENT` / `MAX_QUEUE` | 3 / 20 | câte rulează simultan / câte așteaptă la rând |
 | `CACHE_ENABLED` | 1 | refolosirea previziunilor identice: 3 ore (o săptămână) … 7 zile (5–10 ani) |
-| `ORACLE_EFFORT` | high | cât de temeinic gândește modelul (`medium` = mai ieftin și mai rapid) |
+| `ORACLE_EFFORT` | medium | efortul selectat implicit în formular (vizitatorul alege între scăzut, mediu și înalt) |
 | `ORACLE_MAX_SEARCHES` / `ORACLE_MAX_FETCHES` | 12 / 4 | câte căutări / pagini citite la o previziune |
 
 ## Punerea în producție

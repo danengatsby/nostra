@@ -18,7 +18,7 @@
       install: 'Instalează aplicația', stepDomain: 'Domeniul', stepQuestion: 'Întrebarea ta', optional: '(opțional)',
       questionPh: 'Ex.: Va scădea inflația din România sub 5% până la finalul perioadei?', examples: 'Exemple de întrebări',
       questionHint: 'Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.',
-      stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului',
+      stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului', effort: 'Efortul oracolului',
       private: 'Previziune privată', privateHint: 'Nu apare în lista publică și nu e indexată de motoarele de căutare. O vede doar cine are linkul.',
       submit: 'Consultă oracolul', duration: 'Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.',
       trackTitle: 'Palmaresul oracolului', loading: 'Se încarcă…', recentTitle: 'Previziuni recente',
@@ -64,7 +64,7 @@
       install: 'Install the app', stepDomain: 'Domain', stepQuestion: 'Your question', optional: '(optional)',
       questionPh: 'E.g.: Will euro area inflation fall below 2% by the end of the period?', examples: 'Example questions',
       questionHint: 'Without a question, the oracle tells you what matters most to expect in the chosen domain and region.',
-      stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language',
+      stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language', effort: 'Oracle effort',
       private: 'Private forecast', privateHint: 'Not shown in the public list and not indexed by search engines. Only people with the link can see it.',
       submit: 'Consult the oracle', duration: 'Usually takes 1–3 minutes: the oracle searches and reads current sources before answering.',
       trackTitle: 'The oracle’s track record', loading: 'Loading…', recentTitle: 'Recent forecasts',
@@ -114,7 +114,7 @@
       watch: 'De urmărit', wildcards: 'Surprize posibile', sources: 'Surse consultate', confidence: 'Încrederea oracolului', conf1: 'Încredere',
       conf: { low: 'scăzută', medium: 'medie', high: 'ridicată' }, imp: { positive: 'favorabil', negative: 'nefavorabil', uncertain: 'incert' },
       made: 'Previziune făcută la', research: (s, c) => `${s} căutări pe internet, ${c} surse găsite`,
-      declinedTitle: 'Oracolul nu răspunde la această întrebare', horizon: 'Perioada', privateTag: 'privată',
+      declinedTitle: 'Oracolul nu răspunde la această întrebare', horizon: 'Perioada', privateTag: 'privată', effort: 'Efort',
       check: { pending: 'Se verifică după', true: 'S-a adeverit', false: 'Nu s-a adeverit', unresolved: 'Încă nelămurit — se reverifică' },
       source: 'sursa', history: 'Cum s-a schimbat prognoza', historyHint: 'Aceeași întrebare, pusă la momente diferite — probabilitatea scenariului de bază:',
       thisOne: 'aceasta', refresh: 'Actualizează previziunea cu datele de azi',
@@ -124,7 +124,7 @@
       watch: 'What to watch', wildcards: 'Possible surprises', sources: 'Sources consulted', confidence: 'Oracle confidence', conf1: 'Confidence',
       conf: { low: 'low', medium: 'medium', high: 'high' }, imp: { positive: 'favourable', negative: 'unfavourable', uncertain: 'uncertain' },
       made: 'Forecast made on', research: (s, c) => `${s} web searches, ${c} sources found`,
-      declinedTitle: 'The oracle will not answer this question', horizon: 'Horizon', privateTag: 'private',
+      declinedTitle: 'The oracle will not answer this question', horizon: 'Horizon', privateTag: 'private', effort: 'Effort',
       check: { pending: 'Checked after', true: 'Came true', false: 'Did not come true', unresolved: 'Not settled yet — will recheck' },
       source: 'source', history: 'How the forecast changed', historyHint: 'The same question asked at different times — probability of the base scenario:',
       thisOne: 'this one', refresh: 'Update the forecast with today’s data',
@@ -203,11 +203,28 @@
         el('input', { type: 'radio', name: 'horizon', id, value: h.id, checked: h.id === checkedHorizon }),
         el('label', { for: id, text: h[ui] }));
     }));
+    const checkedEffort = currentEffort() || catalog.defaultEffort;
+    $('#efforts').replaceChildren(...catalog.efforts.map((x) => {
+      const id = `e-${x.id}`;
+      return el('div', { class: 'seg' },
+        el('input', { type: 'radio', name: 'effort', id, value: x.id, checked: x.id === checkedEffort }),
+        el('label', { for: id, text: x[ui] }));
+    }));
+    renderEffortHint();
     const region = $('#region');
     const reg = region.value || 'global';
     region.replaceChildren(...catalog.regions.map((r) => el('option', { value: r.id, text: r[ui] })));
     region.value = reg;
     renderExamples();
+  }
+
+  function currentEffort() {
+    return (document.querySelector('input[name=effort]:checked') || {}).value;
+  }
+
+  function renderEffortHint() {
+    const x = catalog.efforts.find((e) => e.id === currentEffort());
+    $('#effort-hint').textContent = x ? x[ui === 'en' ? 'hintEn' : 'hintRo'] : '';
   }
 
   function currentDomain() {
@@ -252,6 +269,7 @@
         lang: $('#lang').value,
         question: $('#question').value.trim(),
         private: $('#private').checked,
+        effort: currentEffort(),
       });
     } catch (ex) {
       err.textContent = ex.message;
@@ -411,8 +429,8 @@
       refresh.addEventListener('click', async () => {
         refresh.disabled = true;
         try {
-          const { domain, horizon, region, lang: l, question } = rec.request;
-          await startPrediction({ domain, horizon, region, lang: l, question, private: rec.request.private === true });
+          const { domain, horizon, region, lang: l, question, effort } = rec.request;
+          await startPrediction({ domain, horizon, region, lang: l, question, effort, private: rec.request.private === true });
         } catch (ex) {
           toast(ex.message);
           refresh.disabled = false;
@@ -438,6 +456,7 @@
       el('span', { class: 'tag', text: `${dom ? dom.icon : ''} ${label(catalog.domains, rq.domain, lang)}` }),
       el('span', { class: 'tag', text: `${t.horizon}: ${label(catalog.horizons, rq.horizon, lang)}` }),
       el('span', { class: 'tag', text: label(catalog.regions, rq.region, lang) }),
+      rq.effort ? el('span', { class: 'tag', text: `${t.effort}: ${label(catalog.efforts, rq.effort, lang).toLowerCase()}` }) : null,
       rq.private ? el('span', { class: 'tag', text: `🔒 ${t.privateTag}` }) : null);
 
     if (p.declined) {
@@ -643,6 +662,7 @@
   $('#lang').value = ui;
   applyUi();
   $('#domains').addEventListener('change', renderExamples);
+  $('#efforts').addEventListener('change', renderEffortHint);
   $('#question').addEventListener('input', () => { $('#qcount').textContent = `${$('#question').value.length}/500`; });
   $('#form').addEventListener('submit', onSubmit);
 
