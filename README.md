@@ -45,6 +45,11 @@ npm test
   calibrate) și scrie rezultatul ca JSON. Dacă JSON-ul iese invalid, este reformatat printr-un al doilea apel
   scurt cu ieșire structurată. Dacă modelul refuză o cerere din motive de siguranță, aceasta este reîncercată
   automat pe un model de rezervă (`ORACLE_FALLBACKS=1`).
+- **Modelul rapid de rezervă** – când bugetul principal de azi s-a epuizat, previziunile noi se fac cu Claude Haiku 5.5
+  (căutare web de bază, cel mult `FALLBACK_MAX_SEARCHES` căutări), din bugetul separat `FALLBACK_DAILY_USD`; tot el
+  preia o previziune când modelul principal dă eroare. Rezultatele lui au cache separat și eticheta „model rapid”.
+  Mesajul „oracolul s-a odihnit” apare doar când s-au epuizat ambele bugete. Previziunile plătite folosesc mereu
+  modelul principal și nu depind de bugetul zilnic.
 - **Progres în timp real** (`lib/jobs.js`) – fiecare cerere rulează în fundal; pagina primește prin
   Server-Sent Events ce caută oracolul, ce pagini citește și ce gândește. Dacă utilizatorul închide pagina,
   previziunea se termină oricum și o găsește la același link.
@@ -82,6 +87,7 @@ Cererile care eșuează din cauza serviciului nu consumă din limita vizitatorul
 | Variabilă | Implicit | Rol |
 |---|---|---|
 | `DAILY_BUDGET_USD` | 1 | cât se poate cheltui pe zi (UTC); registrul e în `data/budget.json` |
+| `FALLBACK_DAILY_USD` | 1 | bugetul zilnic separat al modelului rapid (Claude Haiku 5.5), folosit după epuizarea bugetului principal sau când modelul principal nu răspunde |
 | `VERIFY_DAILY_USD` | 0.25 | cât din bugetul zilnic pot folosi verificările |
 | `RATE_PER_HOUR` | 6 | previziuni noi pe oră de la același vizitator |
 | `DAILY_LIMIT` | 300 | previziuni noi pe zi, în total |

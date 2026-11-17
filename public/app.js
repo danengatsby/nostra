@@ -35,7 +35,7 @@
       share: 'Distribuie', copyLink: 'Copiază linkul', pdf: 'Salvează PDF', newForecast: 'O nouă previziune',
       errorTitle: 'Oracolul a tăcut', tryAgain: 'Încearcă din nou',
       disclaimer: 'Previziunile sunt estimări probabilistice generate automat de inteligență artificială pe baza surselor publice găsite la momentul cererii. Nu sunt certitudini și nu reprezintă consultanță financiară, medicală sau juridică.',
-      phases: { queued: 'Aștepți la rând…', research: 'Oracolul caută pe internet…', writing: 'Oracolul scrie previziunea…', repair: 'Oracolul își pune gândurile în ordine…' },
+      phases: { queued: 'Aștepți la rând…', research: 'Oracolul caută pe internet…', writing: 'Oracolul scrie previziunea…', repair: 'Oracolul își pune gândurile în ordine…', fallback: 'Oracolul continuă cu modelul rapid…' },
       queuePos: (n) => `Ești al ${n}-lea la rând.`,
       searches: (n) => `${n} ${n === 1 ? 'căutare' : 'căutări'}`, found: (n) => `${n} surse găsite`,
       searching: (q) => `Caută: „${q}”`, reading: (h) => `Citește: ${h}`,
@@ -88,7 +88,7 @@
       share: 'Share', copyLink: 'Copy link', pdf: 'Save as PDF', newForecast: 'New forecast',
       errorTitle: 'The oracle fell silent', tryAgain: 'Try again',
       disclaimer: 'Forecasts are probabilistic estimates generated automatically by artificial intelligence from public sources found at the time of the request. They are not certainties and are not financial, medical or legal advice.',
-      phases: { queued: 'Waiting in line…', research: 'The oracle is searching the web…', writing: 'The oracle is writing the forecast…', repair: 'The oracle is putting its thoughts in order…' },
+      phases: { queued: 'Waiting in line…', research: 'The oracle is searching the web…', writing: 'The oracle is writing the forecast…', repair: 'The oracle is putting its thoughts in order…', fallback: 'The oracle continues with the fast model…' },
       queuePos: (n) => `You are number ${n} in line.`,
       searches: (n) => `${n} ${n === 1 ? 'search' : 'searches'}`, found: (n) => `${n} sources found`,
       searching: (q) => `Searching: “${q}”`, reading: (h) => `Reading: ${h}`,
@@ -129,6 +129,7 @@
       conf: { low: 'scăzută', medium: 'medie', high: 'ridicată' }, imp: { positive: 'favorabil', negative: 'nefavorabil', uncertain: 'incert' },
       made: 'Previziune făcută la', research: (s, c) => `${s} căutări pe internet, ${c} surse găsite`,
       declinedTitle: 'Oracolul nu răspunde la această întrebare', horizon: 'Perioada', privateTag: 'privată', effort: 'Efort',
+      liteTag: 'model rapid', liteNote: 'Previziune făcută cu modelul rapid al oracolului (analiză mai scurtă, cu mai puține căutări).',
       check: { pending: 'Se verifică după', true: 'S-a adeverit', false: 'Nu s-a adeverit', unresolved: 'Încă nelămurit — se reverifică' },
       source: 'sursa', history: 'Cum s-a schimbat prognoza', historyHint: 'Aceeași întrebare, pusă la momente diferite — probabilitatea scenariului de bază:',
       thisOne: 'aceasta', refresh: 'Actualizează previziunea cu datele de azi',
@@ -139,6 +140,7 @@
       conf: { low: 'low', medium: 'medium', high: 'high' }, imp: { positive: 'favourable', negative: 'unfavourable', uncertain: 'uncertain' },
       made: 'Forecast made on', research: (s, c) => `${s} web searches, ${c} sources found`,
       declinedTitle: 'The oracle will not answer this question', horizon: 'Horizon', privateTag: 'private', effort: 'Effort',
+      liteTag: 'fast model', liteNote: 'Forecast made with the oracle’s fast model (a shorter analysis with fewer searches).',
       check: { pending: 'Checked after', true: 'Came true', false: 'Did not come true', unresolved: 'Not settled yet — will recheck' },
       source: 'source', history: 'How the forecast changed', historyHint: 'The same question asked at different times — probability of the base scenario:',
       thisOne: 'this one', refresh: 'Update the forecast with today’s data',
@@ -537,7 +539,8 @@
       el('span', { class: 'tag', text: `${t.horizon}: ${label(catalog.horizons, rq.horizon, lang)}` }),
       el('span', { class: 'tag', text: label(catalog.regions, rq.region, lang) }),
       rq.effort ? el('span', { class: 'tag', text: `${t.effort}: ${label(catalog.efforts, rq.effort, lang).toLowerCase()}` }) : null,
-      rq.private ? el('span', { class: 'tag', text: `🔒 ${t.privateTag}` }) : null);
+      rq.private ? el('span', { class: 'tag', text: `🔒 ${t.privateTag}` }) : null,
+      meta.tier === 'lite' ? el('span', { class: 'tag', title: t.liteNote, text: `⚡ ${t.liteTag}` }) : null);
 
     if (p.declined) {
       root.append(el('section', { class: 'card declined' }, tags, el('h1', { text: t.declinedTitle }), el('p', { text: p.declined_reason || p.summary }),
@@ -600,7 +603,7 @@
         el('span', { class: 'host', text: hostOf(s.url) }))))));
     }
 
-    root.append(el('p', { class: 'r-foot', text: `${t.made} ${fmtDate(rec.createdAt, lang)} · ${t.research(meta.searches || 0, meta.consulted || 0)}` }));
+    root.append(el('p', { class: 'r-foot', text: [`${t.made} ${fmtDate(rec.createdAt, lang)}`, t.research(meta.searches || 0, meta.consulted || 0), meta.tier === 'lite' ? t.liteNote : ''].filter(Boolean).join(' · ') }));
   }
 
   // ---------- distribuire ----------

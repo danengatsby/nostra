@@ -130,11 +130,15 @@ test('verificarea periodică pornește comenzile plătite fără întoarcere pe 
   assert.equal(orders.get(old).status, 'expired');
 });
 
-test('fără buget, plata nu se mai deschide deloc', async () => {
+test('previziunile plătite nu depind de bugetul zilnic (prețul acoperă costul)', async () => {
   cost.record(5, 'prediction');
   const res = await post('/api/predict', { ...Q, question: 'Buget?', ui: 'en' });
-  assert.equal(res.status, 429);
-  assert.match((await res.json()).error, /resting for today/);
+  assert.equal(res.status, 200);
+  const { orderId, checkoutUrl } = await res.json();
+  assert.ok(checkoutUrl);
+  const { predictionId } = await (await post(`/api/orders/${orderId}/confirm`, {})).json();
+  assert.match(await finish(predictionId), /event: done/);
+  assert.equal(store.get(predictionId).meta.tier, 'main', 'plătit → mereu modelul principal');
 });
 
 test('Stripe: sesiunea de plată cere 1 € pentru comanda corectă, iar plata se verifică strict', async () => {

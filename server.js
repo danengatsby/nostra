@@ -185,7 +185,7 @@ app.get('/api/p/:id', (req, res) => {
       const it = items.get(i);
       return { resolveBy: verify.resolveDate(rec, p), status: it?.status || 'pending', evidence: it?.evidence || '', url: it?.url || null };
     }),
-    meta: { searches: meta.searches, fetches: meta.fetches, consulted: meta.consulted, durationMs: meta.durationMs },
+    meta: { searches: meta.searches, fetches: meta.fetches, consulted: meta.consulted, durationMs: meta.durationMs, tier: meta.tier || 'main' },
   });
 });
 

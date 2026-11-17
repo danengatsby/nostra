@@ -105,7 +105,7 @@ test('registrul de buget păstrează istoricul zilelor încheiate', () => {
   cost._reset();
   const st = cost.status();
   assert.equal(st.spentUsd, 0);
-  assert.deepEqual(st.history.at(-1), { date: '2026-01-01', spentUsd: 0.9, verifySpentUsd: 0.1, predictions: 2, verifications: 1 });
+  assert.deepEqual(st.history.at(-1), { date: '2026-01-01', spentUsd: 0.9, verifySpentUsd: 0.1, fallbackSpentUsd: 0, predictions: 2, verifications: 1, fallbacks: 0 });
 });
 
 test('aplicația instalabilă: manifest, service worker, pictograme', async () => {

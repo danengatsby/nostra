@@ -12,6 +12,8 @@ delete process.env.DEMO_MODE;
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'nostra-limits-'));
 process.env.DAILY_BUDGET_USD = '1';
 process.env.RATE_PER_HOUR = '1';
+// Bugetul modelului de rezervă: încape o singură previziune (~0,105 $ cu consumul de test, estimare 0,06 $).
+process.env.FALLBACK_DAILY_USD = '0.1';
 
 const store = require('../lib/store');
 const cost = require('../lib/cost');
@@ -25,13 +27,18 @@ const REQ = { domain: 'economie', horizon: '1y', region: 'ro', lang: 'ro', quest
 // Consumul unei previziuni, așa cum îl adună oracolul: 0,004 + 0,2 + 0,1 = 0,304 $
 const USAGE = { input_tokens: 1000, output_tokens: 10000, web_search_requests: 10 };
 
-/** Client fals al cărui răspuns e decis de `behavior`: 'ok' | 'refusal' | 'error'. */
-function client(behavior) {
+/**
+ * Client fals al cărui răspuns e decis de `behavior`: 'ok' | 'refusal' | 'error' | 'main-error' (doar modelul
+ * principal eșuează). `seen` primește modelul fiecărui apel.
+ */
+function client(behavior, seen = []) {
   return {
-    beta: { messages: { stream() {
+    beta: { messages: { stream(params) {
+      seen.push(params.model);
       const em = new EventEmitter();
       em.finalMessage = async () => {
         if (behavior === 'error') throw Object.assign(new Error('overloaded'), { status: 529 });
+        if (behavior === 'main-error' && params.model !== 'claude-haiku-5-5') throw Object.assign(new Error('overloaded'), { status: 529 });
         if (behavior === 'refusal') return { stop_reason: 'refusal', usage: { output_tokens: 50 }, content: [] };
         const p = { title: 'T', summary: 'S', predictions: [{ claim: 'C', probability: 60, resolve_by: '2027-01-15' }] };
         return { stop_reason: 'end_turn', usage: { input_tokens: 1000, output_tokens: 10000, server_tool_use: { web_search_requests: 10 } }, content: [{ type: 'text', text: `<prediction>${JSON.stringify(p)}</prediction>` }] };
@@ -87,7 +94,22 @@ test('bugetul zilnic oprește previziunile noi, dar nu și cache-ul', async () =
   // 0,609 + 0,304 ≤ 1 → încă una; după ea, 0,913 + 0,304 > 1 → stop.
   const third = jobs.submit({ ...REQ, question: 'A treia?' }, '10.0.0.4');
   assert.equal(await settle(third.id), 'done');
-  assert.throws(() => jobs.submit({ ...REQ, question: 'A patra?' }, '10.0.0.5'), /odihnit pentru azi/);
+
+  // Bugetul principal e epuizat: a patra merge pe modelul de rezervă (Haiku), din bugetul lui separat.
+  const seen = [];
+  oracle._setClient(client('ok', seen));
+  const fourth = jobs.submit({ ...REQ, question: 'A patra?' }, '10.0.0.5');
+  assert.equal(await settle(fourth.id), 'done');
+  assert.deepEqual(seen, ['claude-haiku-5-5']);
+  const lite = store.get(fourth.id);
+  assert.equal(lite.meta.tier, 'lite');
+  assert.equal(lite.meta.costUsd, 0.1051, '1000 × 0,10 $/M + 10000 × 0,50 $/M + 10 căutări × 0,01 $');
+  assert.match(lite.key, /\|lite$/, 'cache separat: mâine aceeași întrebare primește analiza completă');
+  assert.equal(cost.status().spentUsd, 0.913, 'bugetul principal nu se atinge');
+  assert.equal(cost.status().fallbackSpentUsd, 0.1051);
+
+  // Abia când s-a epuizat și bugetul de rezervă apare mesajul.
+  assert.throws(() => jobs.submit({ ...REQ, question: 'A cincea?' }, '10.0.0.9'), /odihnit pentru azi/);
 
   // O întrebare deja calculată se servește în continuare, fără cost.
   assert.deepEqual(jobs.submit({ ...REQ, question: 'prima' }, '10.0.0.6'), { id: first.id, cached: true });
@@ -106,7 +128,21 @@ test('durata cache-ului crește cu orizontul', () => {
   });
   store.save(rec('saptamana', '1w', 4)); // 4 ore > 3 ore → expirată
   store.save(rec('deceniu', '10y', 100)); // 100 ore < 7 zile → valabilă
-  // Expirată → ar fi o previziune nouă, iar bugetul de azi e epuizat de testul anterior.
+  // Expirată → nu mai vine din cache (ar fi o previziune nouă; azi ambele bugete sunt epuizate).
   assert.throws(() => jobs.submit({ ...REQ, horizon: '1w', question: 'saptamana' }, '10.0.0.7'), /odihnit/);
   assert.equal(jobs.submit({ ...REQ, horizon: '10y', question: 'deceniu' }, '10.0.0.8').cached, true);
+});
+
+test('dacă modelul principal dă eroare, previziunea se face cu modelul de rezervă', async () => {
+  cost._reset();
+  fs.writeFileSync(path.join(process.env.DATA_DIR, 'budget.json'), JSON.stringify({ date: new Date().toISOString().slice(0, 10), spentUsd: 0, recent: [] }));
+  const seen = [];
+  oracle._setClient(client('main-error', seen));
+  const { id } = jobs.submit({ ...REQ, question: 'Opus suprasolicitat?' }, '10.0.1.1');
+  const events = [];
+  jobs.get(id).bus.on('event', (ev) => events.push(ev.type === 'status' ? ev.data.phase : ev.type));
+  assert.equal(await settle(id), 'done');
+  assert.deepEqual(seen, ['claude-opus-5-5', 'claude-haiku-5-5']);
+  assert.ok(events.includes('fallback'), 'vizitatorul vede că oracolul trece pe modelul rapid');
+  assert.equal(store.get(id).meta.tier, 'lite');
 });

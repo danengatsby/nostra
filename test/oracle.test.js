@@ -177,3 +177,16 @@ test('efortul ales de vizitator ajunge la model; implicit cel din .env', async (
   assert.deepEqual(await run(undefined), ['medium', 'medium']);
   assert.deepEqual(await run('max'), ['medium', 'medium'], 'valorile din afara listei nu trec');
 });
+
+test('modelul de rezervă: Haiku 5.5, căutarea de bază, fără `fallbacks`, cu îndemnul de căutare', async () => {
+  const calls = [];
+  oracle._setClient(fakeClient([{ stop_reason: 'end_turn', model: 'claude-haiku-5-5', usage: {}, content: [{ type: 'text', text: `<prediction>${JSON.stringify(VALID)}</prediction>` }] }], calls));
+  const { meta } = await oracle.runOracle(REQ, () => {}, undefined, { tier: 'lite' });
+  const p = calls[0];
+  assert.equal(p.model, 'claude-haiku-5-5');
+  assert.deepEqual(p.tools, [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }]);
+  assert.equal(p.fallbacks, undefined);
+  assert.equal(p.betas, undefined);
+  assert.match(p.messages[0].content, /search for those before you answer/);
+  assert.deepEqual([meta.tier, meta.model], ['lite', 'claude-haiku-5-5']);
+});
