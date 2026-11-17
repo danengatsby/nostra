@@ -57,7 +57,8 @@ test('o previziune completă, apoi servită din cache', async () => {
 
   // Aceeași întrebare (altfel scrisă) → același rezultat, fără un nou apel.
   const again = await (await post({ ...body, question: '  unde va fi CURSUL eur/ron ' })).json();
-  assert.deepEqual(again, { id, cached: true });
+  assert.deepEqual([again.id, again.cached], [id, true]);
+  assert.ok(again.etaSec >= 15);
 
   const recent = await (await fetch(`${base}/api/recent`)).json();
   assert.equal(recent[0].id, id);

@@ -18,6 +18,11 @@ După data fiecărei afirmații, oracolul **își verifică singur previziunile*
 marchează afirmația ca adevărată, falsă sau încă nelămurită, cu dovada și sursa. Prima pagină arată palmaresul:
 procentul de previziuni corecte, scorul Brier și calibrarea (dintre afirmațiile date cu 70–79%, câte s-au adeverit).
 
+Mai are: interfață în română și engleză, previziuni **private** (în afara listelor publice și a indexării),
+istoricul aceleiași întrebări puse la momente diferite (cum s-a schimbat probabilitatea scenariului de bază),
+timp estimat și notificare în browser când previziunea e gata, distribuire (WhatsApp, Facebook, X, Telegram),
+export PDF (tipărire) și instalare ca aplicație pe telefon sau calculator (PWA).
+
 ## Pornire rapidă
 
 ```bash
@@ -52,6 +57,9 @@ npm test
   de cel mult 4 ori. Rezultatul se salvează în fișierul previziunii.
 - **Previzualizări și indexare** (`lib/seo.js`) – serverul pune în pagina `/p/<id>` titlul, rezumatul și imaginea
   1200×630 (desenată ca SVG, rasterizată cu ffmpeg și salvată în `data/og/`). Există și `sitemap.xml`, `robots.txt`.
+- **Administrare** (`/admin`, `lib/admin.js`) – protejată cu parola `ADMIN_PASSWORD` din `.env` (orice nume de
+  utilizator): bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
+  întrebările private) și erorile recente (`data/events.json`).
 - **Ce refuză oracolul** – întrebări despre persoane private, decese sau sănătatea cuiva, numere la loterie
   și orice ar putea face rău. Previziunile despre sănătate, bani sau drept sunt informative, nu sfaturi.
 
@@ -83,14 +91,21 @@ Cererile care eșuează din cauza serviciului nu consumă din limita vizitatorul
 3. nginx + HTTPS: vezi `deploy/nginx.conf.example` (înlocuiește `DOMENIU.RO`, apoi `certbot --nginx`).
    Ruta `/api/predict/<id>/events` are nevoie de `proxy_buffering off` și un timeout lung — sunt deja în exemplu.
 
+## Backup și versiuni
+
+- Codul e în git (`main`); `.env` și `data/` nu intră în repository.
+- `deploy/backup.sh` rulează zilnic la 03:30 (crontab-ul utilizatorului `ubuntu`) și păstrează ultimele 14 arhive
+  cu `data/` și `.env` în `/home/ubuntu/backups/nostra/`. Sunt pe același disc: pentru siguranță deplină, copiază-le
+  periodic și în altă parte. Restaurare: `tar -xzf <arhivă> -C /var/www/nostra` și `sudo systemctl restart nostra`.
+
 ## API
 
 | Metodă | Rută | Descriere |
 |---|---|---|
 | `GET` | `/api/catalog` | domenii, orizonturi, regiuni |
-| `POST` | `/api/predict` | `{domain, horizon, region, lang, question}` → `{id, cached}` |
+| `POST` | `/api/predict` | `{domain, horizon, region, lang, question, private?, ui?}` → `{id, cached, etaSec}` |
 | `GET` | `/api/predict/:id/events` | flux SSE: `status`, `search`, `results`, `fetch`, `thought`, `done`, `error` |
-| `GET` | `/api/p/:id` | previziunea completă, cu starea verificării fiecărei afirmații (`checks`) |
+| `GET` | `/api/p/:id` | previziunea completă, cu verificarea fiecărei afirmații (`checks`), istoricul întrebării (`history`) și dacă se poate actualiza (`refreshable`) |
 | `GET` | `/api/recent` | ultimele previziuni |
 | `GET` | `/api/track-record` | palmaresul: afirmații verificate, procent corect, Brier, calibrare |
 | `GET` | `/og/<id>.png` | imaginea de previzualizare a linkului |

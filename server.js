@@ -13,6 +13,8 @@ const store = require('./lib/store');
 const jobs = require('./lib/jobs');
 const seo = require('./lib/seo');
 const verify = require('./lib/verify');
+const admin = require('./lib/admin');
+const { t } = require('./lib/messages');
 
 const PORT = Number(process.env.PORT || 3200);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -45,8 +47,13 @@ app.get('/api/catalog', (req, res) => {
   res.set('Cache-Control', 'public, max-age=3600').json(catalog.publicCatalog());
 });
 
-/** Validează cererea venită din formular; întoarce un obiect curat sau aruncă un mesaj pentru utilizator. */
-function parseRequest(body = {}) {
+const uiLang = (v) => (v === 'en' ? 'en' : 'ro');
+
+/**
+ * Validează cererea venită din formular; întoarce un obiect curat sau aruncă un mesaj pentru utilizator,
+ * în limba interfeței (`ui`).
+ */
+function parseRequest(body = {}, ui = 'ro') {
   const pick = (v, map, fallback) => (typeof v === 'string' && map[v] ? v : fallback);
   const req = {
     domain: pick(body.domain, catalog.DOMAIN, null),
@@ -55,26 +62,34 @@ function parseRequest(body = {}) {
     lang: catalog.LANGS.includes(body.lang) ? body.lang : 'ro',
     question: typeof body.question === 'string' ? body.question.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').replace(/\s+/g, ' ').trim() : '',
   };
-  if (!req.domain) throw new Error('Alege un domeniu.');
-  if (!req.horizon) throw new Error('Alege perioada previziunii.');
-  if (req.question.length > 500) throw new Error('Întrebarea poate avea cel mult 500 de caractere.');
-  if (req.domain === 'altul' && req.question.length < 5) throw new Error('Pentru „Alt domeniu” scrie întrebarea ta.');
+  if (body.private === true) req.private = true; // nu apare în listele publice și nu e indexată
+  if (!req.domain) throw new Error(t('pickDomain', ui));
+  if (!req.horizon) throw new Error(t('pickHorizon', ui));
+  if (req.question.length > 500) throw new Error(t('questionTooLong', ui));
+  if (req.domain === 'altul' && req.question.length < 5) throw new Error(t('otherNeedsQuestion', ui));
   return req;
 }
 
+/** Durata tipică a unei previziuni (media ultimelor 10), pentru estimarea afișată în timpul așteptării. */
+function etaSeconds() {
+  const d = store.all().slice(0, 10).map((s) => store.get(s.id)?.meta?.durationMs).filter(Boolean);
+  return d.length ? Math.max(15, Math.round(d.reduce((a, b) => a + b, 0) / d.length / 1000)) : 120;
+}
+
 app.post('/api/predict', (req, res) => {
+  const ui = uiLang(req.body?.ui);
   let request;
   try {
-    request = parseRequest(req.body);
+    request = parseRequest(req.body, ui);
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
   try {
-    res.json(jobs.submit(request, req.ip));
+    res.json({ ...jobs.submit(request, req.ip, ui), etaSec: etaSeconds() });
   } catch (e) {
     if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: e.message });
     console.error('[predict]', e);
-    res.status(500).json({ error: 'Eroare internă. Încearcă din nou.' });
+    res.status(500).json({ error: t('internal', ui) });
   }
 });
 
@@ -82,7 +97,7 @@ app.post('/api/predict', (req, res) => {
 app.get('/api/predict/:id/events', (req, res) => {
   const { id } = req.params;
   const job = jobs.get(id);
-  if (!job && !store.get(id)) return res.status(404).json({ error: 'Previziunea nu există.' });
+  if (!job && !store.get(id)) return res.status(404).json({ error: t('notFound', uiLang(req.query.ui)) });
 
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
   res.flushHeaders();
@@ -111,11 +126,21 @@ app.get('/api/predict/:id/events', (req, res) => {
 
 app.get('/api/p/:id', (req, res) => {
   const rec = store.get(req.params.id);
-  if (!rec) return res.status(404).json({ error: 'Previziunea nu există.' });
+  if (!rec) return res.status(404).json({ error: t('notFound', uiLang(req.query.ui)) });
   const { id, createdAt, request, prediction, meta, verification } = rec;
+  // Aceeași întrebare pusă la momente diferite: cum s-a schimbat scenariul de bază (doar previziuni publice).
+  const series = request.private ? [] : store.series(rec.key);
+  const history = series.length > 1 ? series.map((s) => {
+    const r = s.id === id ? rec : store.get(s.id);
+    const base = r?.prediction.scenarios?.[0];
+    return { id: s.id, createdAt: s.createdAt, base: base ? { name: base.name, probability: base.probability } : null };
+  }) : [];
+  // Se poate cere o versiune nouă când cea mai recentă din serie a ieșit din cache.
+  const latest = series.length ? series[series.length - 1].createdAt : createdAt;
+  const refreshable = Date.now() - Date.parse(latest) > catalog.HORIZON[request.horizon].cacheHours * 3600000;
   const items = new Map((verification?.items || []).map((it) => [it.index, it]));
   res.set('Cache-Control', 'public, max-age=300').json({
-    id, createdAt, request, prediction,
+    id, createdAt, request, prediction, history, refreshable,
     // Pentru fiecare afirmație: data verificării și, dacă a fost verificată, rezultatul.
     checks: prediction.predictions.map((p, i) => {
       const it = items.get(i);
@@ -140,6 +165,9 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // --- Interfața ---
 
+// Administrare (parola din ADMIN_PASSWORD).
+app.get('/admin', admin.auth, admin.page);
+
 // Imaginea de previzualizare a linkului: /og/site.png sau /og/<id>.png (generată o singură dată).
 app.get('/og/:name.png', async (req, res) => {
   const { name } = req.params;
@@ -160,6 +188,10 @@ app.get('/robots.txt', (req, res) => {
 app.get('/sitemap.xml', (req, res) => {
   res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(seo.sitemap(store.recent(5000)));
 });
+
+// Service worker-ul nu se ține în cache, ca actualizările aplicației să ajungă imediat.
+app.get('/sw.js', (req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(PUBLIC, 'sw.js')));
+app.get('/manifest.webmanifest', (req, res) => res.type('application/manifest+json').set('Cache-Control', 'public, max-age=3600').sendFile(path.join(PUBLIC, 'manifest.webmanifest')));
 
 app.use(express.static(PUBLIC, { index: false, maxAge: '1h' }));
 

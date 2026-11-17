@@ -244,3 +244,48 @@ textarea:focus, select:focus { border-color: var(--gold); outline: none; }
   .stats { grid-template-columns: 1fr; }
   .calibration li { grid-template-columns: 1fr; gap: 4px; }
 }
+
+/* Antet: limba interfeței și instalarea aplicației */
+.site-header { position: relative; }
+.header-tools { position: absolute; top: 14px; right: 16px; display: flex; gap: 8px; }
+.btn-small { font: 600 .8rem var(--sans); color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.btn-small:hover { border-color: var(--gold); }
+.btn-compact { padding: 8px 14px; font-size: .9rem; }
+
+/* Opțiunea „privată” */
+.check-row { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 20px; cursor: pointer; }
+.check-row input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--gold); flex: none; }
+.check-row span { display: grid; gap: 2px; }
+.check-row .muted { font-size: .85rem; }
+
+/* Timpul estimat */
+.eta { height: 6px; max-width: 420px; margin: 4px auto 10px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.eta b { display: block; height: 100%; width: 0; background: var(--gold); border-radius: 3px; transition: width 1s linear; }
+#notify { margin: 0 auto 16px; }
+
+/* Evoluția prognozei */
+.history { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.history li { display: grid; grid-template-columns: 170px 1fr 48px; gap: 10px; align-items: center; font-size: .9rem; }
+.history .bar { margin: 0; }
+.history li.this .h-date { font-weight: 600; }
+.history .pct { text-align: right; }
+
+.share { font-size: .9rem; padding: 10px 14px; }
+
+@media (max-width: 640px) {
+  .header-tools { position: static; justify-content: flex-end; margin-bottom: 8px; }
+  .history li { grid-template-columns: 1fr 48px; }
+  .history .bar { grid-column: 1 / -1; grid-row: 2; }
+}
+
+/* Tipărire / PDF: fundal alb, fără butoane și elemente de navigare */
+@media print {
+  :root { --bg: #fff; --bg-2: #fff; --card: #fff; --card-2: #f6f6f6; --line: #ccc; --text: #111; --muted: #555; --gold: #7a560a; --gold-2: #7a560a; color-scheme: light; }
+  body { background: #fff; }
+  .header-tools, .result-actions, .site-footer p:empty, #toast, .view:not(#view-result) { display: none !important; }
+  .site-header { padding: 0 0 12px; }
+  .card { break-inside: avoid; border-color: #ccc; }
+  .result { gap: 10px; }
+  a { color: #111; }
+  .sources a::after { content: " (" attr(href) ")"; font-size: .75em; color: #555; overflow-wrap: anywhere; }
+}

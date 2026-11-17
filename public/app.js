@@ -1,6 +1,6 @@
 'use strict';
 // Interfața Nostradamus: formular → flux de progres (SSE) → previziune. Tot conținutul venit de la
-// server este inserat cu textContent (niciodată ca HTML).
+// server este inserat cu textContent (niciodată ca HTML). Interfața e în română sau engleză.
 
 (() => {
   const $ = (sel) => document.querySelector(sel);
@@ -8,51 +8,145 @@
   let catalog = null;
   let source = null; // EventSource activ
   let timer = null;
+  let current = null; // previziunea afișată
+  let eta = 120; // durata estimată a unei previziuni, în secunde
 
-  const EXAMPLES = {
-    economie: ['Va scădea inflația din România sub 5%?', 'Va intra zona euro în recesiune?'],
-    piete: ['Unde va fi cursul EUR/RON?', 'Va depăși Bitcoin maximul istoric?'],
-    tehnologie: ['Ce lansări importante în AI vor avea loc?', 'Cum va evolua piața smartphone-urilor?'],
-    politica: ['Cine va câștiga următoarele alegeri?', 'Va rămâne coaliția actuală la guvernare?'],
-    geopolitica: ['Va exista un armistițiu în Ucraina?', 'Cum vor evolua relațiile SUA–China?'],
-    energie: ['Cât va costa barilul de petrol Brent?', 'Vor scădea facturile la energie în România?'],
-    imobiliare: ['Vor crește prețurile apartamentelor în București?', 'Vor scădea dobânzile la creditele ipotecare?'],
-    clima: ['Va fi iarna mai caldă decât media?', 'Va fi acest an cel mai cald înregistrat?'],
-    sanatate: ['Cum va evolua sezonul de gripă?', 'Ce tratamente noi vor fi aprobate în UE?'],
-    sport: ['Cine va câștiga Liga Campionilor?', 'Se va califica România la Campionatul Mondial?'],
-    stiinta: ['Va ateriza o misiune cu echipaj pe Lună?', 'Ce descoperiri importante sunt așteptate?'],
-    societate: ['Va crește salariul minim în România?', 'Cum va evolua șomajul în UE?'],
-    divertisment: ['Ce film va câștiga Oscarul?', 'Care va fi cel mai vizionat film al anului?'],
-    altul: ['Scrie aici orice întrebare despre viitor…'],
+  // ---------- limba interfeței ----------
+  const U = {
+    ro: {
+      tagline: 'Previziuni construite din ce se întâmplă acum în lume',
+      install: 'Instalează aplicația', stepDomain: 'Domeniul', stepQuestion: 'Întrebarea ta', optional: '(opțional)',
+      questionPh: 'Ex.: Va scădea inflația din România sub 5% până la finalul perioadei?', examples: 'Exemple de întrebări',
+      questionHint: 'Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.',
+      stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului',
+      private: 'Previziune privată', privateHint: 'Nu apare în lista publică și nu e indexată de motoarele de căutare. O vede doar cine are linkul.',
+      submit: 'Consultă oracolul', duration: 'Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.',
+      trackTitle: 'Palmaresul oracolului', loading: 'Se încarcă…', recentTitle: 'Previziuni recente',
+      recentEmpty: 'Încă nu există previziuni. Fii primul care consultă oracolul.',
+      preparing: 'Oracolul se pregătește…', notify: '🔔 Anunță-mă când e gata', notifyOn: '🔔 Te anunțăm când e gata',
+      leaveHint: 'Poți lăsa pagina deschisă sau poți reveni mai târziu la același link: previziunea se termină oricum.',
+      share: 'Distribuie', copyLink: 'Copiază linkul', pdf: 'Salvează PDF', newForecast: 'O nouă previziune',
+      errorTitle: 'Oracolul a tăcut', tryAgain: 'Încearcă din nou',
+      disclaimer: 'Previziunile sunt estimări probabilistice generate automat de inteligență artificială pe baza surselor publice găsite la momentul cererii. Nu sunt certitudini și nu reprezintă consultanță financiară, medicală sau juridică.',
+      phases: { queued: 'Aștepți la rând…', research: 'Oracolul caută pe internet…', writing: 'Oracolul scrie previziunea…', repair: 'Oracolul își pune gândurile în ordine…' },
+      queuePos: (n) => `Ești al ${n}-lea la rând.`,
+      searches: (n) => `${n} ${n === 1 ? 'căutare' : 'căutări'}`, found: (n) => `${n} surse găsite`,
+      searching: (q) => `Caută: „${q}”`, reading: (h) => `Citește: ${h}`,
+      etaLeft: (m) => (m <= 1 ? '· mai puțin de un minut' : `· încă ~${m} minute`), etaAlmost: '· aproape gata…',
+      lost: 'Legătura cu serverul s-a întrerupt. Reîncarcă pagina pentru a vedea previziunea.',
+      missing: 'Previziunea nu există sau nu mai este disponibilă.', network: 'Eroare de rețea. Încearcă din nou.',
+      loadFail: 'Aplicația nu s-a putut încărca. Reîncarcă pagina.', copied: 'Linkul a fost copiat',
+      readyTitle: 'Previziunea e gata', defaultTitle: 'Nostradamus — previziuni din datele de azi',
+      track: {
+        intro: 'Oracolul își verifică singur previziunile: după data fiecărei afirmații, caută ce s-a întâmplat de fapt și o marchează ca adevărată sau falsă. Aici se va vedea cât de des are dreptate.',
+        waiting: (n, d) => `${n} afirmații așteaptă verificarea. Primele rezultate: după ${d}.`, none: 'Încă nu există afirmații de verificat.',
+        correct: (c, n) => `previziuni corecte (${c} din ${n})`, brier: 'scor Brier (0 = perfect, 0,25 = cu banul)', pending: 'afirmații încă în așteptare',
+        calibration: 'Calibrare', said: (r) => `Spus ${r}`, happened: (a, n) => `s-a întâmplat ${a}% (${n})`, latest: 'Ultimele verificări',
+      },
+      examplesBy: {
+        economie: ['Va scădea inflația din România sub 5%?', 'Va intra zona euro în recesiune?'],
+        piete: ['Unde va fi cursul EUR/RON?', 'Va depăși Bitcoin maximul istoric?'],
+        tehnologie: ['Ce lansări importante în AI vor avea loc?', 'Cum va evolua piața smartphone-urilor?'],
+        politica: ['Cine va câștiga următoarele alegeri?', 'Va rămâne coaliția actuală la guvernare?'],
+        geopolitica: ['Va exista un armistițiu în Ucraina?', 'Cum vor evolua relațiile SUA–China?'],
+        energie: ['Cât va costa barilul de petrol Brent?', 'Vor scădea facturile la energie în România?'],
+        imobiliare: ['Vor crește prețurile apartamentelor în București?', 'Vor scădea dobânzile la creditele ipotecare?'],
+        clima: ['Va fi iarna mai caldă decât media?', 'Va fi acest an cel mai cald înregistrat?'],
+        sanatate: ['Cum va evolua sezonul de gripă?', 'Ce tratamente noi vor fi aprobate în UE?'],
+        sport: ['Cine va câștiga Liga Campionilor?', 'Se va califica România la Campionatul Mondial?'],
+        stiinta: ['Va ateriza o misiune cu echipaj pe Lună?', 'Ce descoperiri importante sunt așteptate?'],
+        societate: ['Va crește salariul minim în România?', 'Cum va evolua șomajul în UE?'],
+        divertisment: ['Ce film va câștiga Oscarul?', 'Care va fi cel mai vizionat film al anului?'],
+      },
+    },
+    en: {
+      tagline: 'Forecasts built from what is happening in the world right now',
+      install: 'Install the app', stepDomain: 'Domain', stepQuestion: 'Your question', optional: '(optional)',
+      questionPh: 'E.g.: Will euro area inflation fall below 2% by the end of the period?', examples: 'Example questions',
+      questionHint: 'Without a question, the oracle tells you what matters most to expect in the chosen domain and region.',
+      stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language',
+      private: 'Private forecast', privateHint: 'Not shown in the public list and not indexed by search engines. Only people with the link can see it.',
+      submit: 'Consult the oracle', duration: 'Usually takes 1–3 minutes: the oracle searches and reads current sources before answering.',
+      trackTitle: 'The oracle’s track record', loading: 'Loading…', recentTitle: 'Recent forecasts',
+      recentEmpty: 'No forecasts yet. Be the first to consult the oracle.',
+      preparing: 'The oracle is getting ready…', notify: '🔔 Notify me when it’s ready', notifyOn: '🔔 We’ll notify you when it’s ready',
+      leaveHint: 'You can keep this page open or come back later to the same link: the forecast will finish anyway.',
+      share: 'Share', copyLink: 'Copy link', pdf: 'Save as PDF', newForecast: 'New forecast',
+      errorTitle: 'The oracle fell silent', tryAgain: 'Try again',
+      disclaimer: 'Forecasts are probabilistic estimates generated automatically by artificial intelligence from public sources found at the time of the request. They are not certainties and are not financial, medical or legal advice.',
+      phases: { queued: 'Waiting in line…', research: 'The oracle is searching the web…', writing: 'The oracle is writing the forecast…', repair: 'The oracle is putting its thoughts in order…' },
+      queuePos: (n) => `You are number ${n} in line.`,
+      searches: (n) => `${n} ${n === 1 ? 'search' : 'searches'}`, found: (n) => `${n} sources found`,
+      searching: (q) => `Searching: “${q}”`, reading: (h) => `Reading: ${h}`,
+      etaLeft: (m) => (m <= 1 ? '· less than a minute left' : `· about ${m} minutes left`), etaAlmost: '· almost done…',
+      lost: 'The connection to the server was lost. Reload the page to see the forecast.',
+      missing: 'This forecast does not exist or is no longer available.', network: 'Network error. Please try again.',
+      loadFail: 'The app could not load. Please reload the page.', copied: 'Link copied',
+      readyTitle: 'Your forecast is ready', defaultTitle: 'Nostradamus — forecasts from today’s data',
+      track: {
+        intro: 'The oracle checks its own forecasts: after each claim’s date, it looks up what actually happened and marks it true or false. This is where you will see how often it is right.',
+        waiting: (n, d) => `${n} claims are waiting to be checked. First results: after ${d}.`, none: 'There are no claims to check yet.',
+        correct: (c, n) => `correct forecasts (${c} of ${n})`, brier: 'Brier score (0 = perfect, 0.25 = coin flip)', pending: 'claims still pending',
+        calibration: 'Calibration', said: (r) => `Said ${r}`, happened: (a, n) => `happened ${a}% (${n})`, latest: 'Latest checks',
+      },
+      examplesBy: {
+        economie: ['Will the euro area enter a recession?', 'Will the Fed cut interest rates?'],
+        piete: ['Where will EUR/USD trade?', 'Will Bitcoin hit a new all-time high?'],
+        tehnologie: ['Which major AI launches will happen?', 'How will the smartphone market evolve?'],
+        politica: ['Who will win the next election?', 'Will the current government survive?'],
+        geopolitica: ['Will there be a ceasefire in Ukraine?', 'How will US–China relations evolve?'],
+        energie: ['What will a barrel of Brent cost?', 'Will European gas prices fall?'],
+        imobiliare: ['Will house prices rise in my city?', 'Will mortgage rates go down?'],
+        clima: ['Will this winter be warmer than average?', 'Will this be the hottest year on record?'],
+        sanatate: ['How will the flu season evolve?', 'Which new treatments will be approved in the EU?'],
+        sport: ['Who will win the Champions League?', 'Who will win the next Grand Slam?'],
+        stiinta: ['Will a crewed mission land on the Moon?', 'Which major discoveries are expected?'],
+        societate: ['Will unemployment rise in the EU?', 'How will migration trends change?'],
+        divertisment: ['Which film will win the Oscar?', 'What will be the year’s biggest box office hit?'],
+      },
+    },
   };
 
+  // Etichetele rezultatului urmează limba previziunii (conținutul), nu a interfeței.
   const L = {
     ro: {
       scenarios: 'Scenarii', predictions: 'Previziuni verificabile', now: 'Unde ne aflăm acum', drivers: 'Factori-cheie',
-      watch: 'De urmărit', wildcards: 'Surprize posibile', sources: 'Surse consultate', confidence: 'Încrederea oracolului',
+      watch: 'De urmărit', wildcards: 'Surprize posibile', sources: 'Surse consultate', confidence: 'Încrederea oracolului', conf1: 'Încredere',
       conf: { low: 'scăzută', medium: 'medie', high: 'ridicată' }, imp: { positive: 'favorabil', negative: 'nefavorabil', uncertain: 'incert' },
-      until: 'până la', made: 'Previziune făcută la', research: (s, c) => `${s} căutări pe internet, ${c} surse găsite`,
-      declinedTitle: 'Oracolul nu răspunde la această întrebare', horizon: 'Perioada',
+      made: 'Previziune făcută la', research: (s, c) => `${s} căutări pe internet, ${c} surse găsite`,
+      declinedTitle: 'Oracolul nu răspunde la această întrebare', horizon: 'Perioada', privateTag: 'privată',
       check: { pending: 'Se verifică după', true: 'S-a adeverit', false: 'Nu s-a adeverit', unresolved: 'Încă nelămurit — se reverifică' },
-      source: 'sursa',
+      source: 'sursa', history: 'Cum s-a schimbat prognoza', historyHint: 'Aceeași întrebare, pusă la momente diferite — probabilitatea scenariului de bază:',
+      thisOne: 'aceasta', refresh: 'Actualizează previziunea cu datele de azi',
     },
     en: {
       scenarios: 'Scenarios', predictions: 'Verifiable predictions', now: 'Where things stand', drivers: 'Key drivers',
-      watch: 'What to watch', wildcards: 'Possible surprises', sources: 'Sources consulted', confidence: 'Oracle confidence',
+      watch: 'What to watch', wildcards: 'Possible surprises', sources: 'Sources consulted', confidence: 'Oracle confidence', conf1: 'Confidence',
       conf: { low: 'low', medium: 'medium', high: 'high' }, imp: { positive: 'favourable', negative: 'unfavourable', uncertain: 'uncertain' },
-      until: 'until', made: 'Forecast made on', research: (s, c) => `${s} web searches, ${c} sources found`,
-      declinedTitle: 'The oracle will not answer this question', horizon: 'Horizon',
+      made: 'Forecast made on', research: (s, c) => `${s} web searches, ${c} sources found`,
+      declinedTitle: 'The oracle will not answer this question', horizon: 'Horizon', privateTag: 'private',
       check: { pending: 'Checked after', true: 'Came true', false: 'Did not come true', unresolved: 'Not settled yet — will recheck' },
-      source: 'source',
+      source: 'source', history: 'How the forecast changed', historyHint: 'The same question asked at different times — probability of the base scenario:',
+      thisOne: 'this one', refresh: 'Update the forecast with today’s data',
     },
   };
 
-  const PHASES = {
-    queued: 'Aștepți la rând…',
-    research: 'Oracolul caută pe internet…',
-    writing: 'Oracolul scrie previziunea…',
-    repair: 'Oracolul își pune gândurile în ordine…',
+  const store = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* stocare indisponibilă */ } },
   };
+  let ui = store.get('ui') || ((navigator.language || 'ro').toLowerCase().startsWith('ro') ? 'ro' : 'en');
+  const tr = (key) => U[ui][key];
+
+  function applyUi() {
+    document.documentElement.lang = ui;
+    document.querySelectorAll('[data-i18n]').forEach((n) => { n.textContent = tr(n.dataset.i18n); });
+    document.querySelectorAll('[data-i18n-ph]').forEach((n) => { n.placeholder = tr(n.dataset.i18nPh); });
+    document.querySelectorAll('[data-i18n-aria]').forEach((n) => n.setAttribute('aria-label', tr(n.dataset.i18nAria)));
+    const btn = $('#ui-lang');
+    btn.textContent = ui === 'ro' ? 'EN' : 'RO';
+    btn.setAttribute('aria-label', ui === 'ro' ? 'Change language to English' : 'Schimbă limba în română');
+  }
 
   // ---------- utilitare DOM ----------
   function el(tag, attrs = {}, ...children) {
@@ -73,49 +167,47 @@
   }
 
   function toast(msg) {
-    const t = $('#toast');
-    t.textContent = msg;
-    t.hidden = false;
+    const tst = $('#toast');
+    tst.textContent = msg;
+    tst.hidden = false;
     clearTimeout(toast.t);
-    toast.t = setTimeout(() => { t.hidden = true; }, 2200);
+    toast.t = setTimeout(() => { tst.hidden = true; }, 2200);
   }
 
-  const label = (list, id, lang = 'ro') => (list.find((x) => x.id === id) || {})[lang] || id;
+  const label = (list, id, lang = ui) => (list.find((x) => x.id === id) || {})[lang] || id;
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
-  const fmtDate = (iso, lang) => new Date(iso).toLocaleDateString(lang === 'en' ? 'en-GB' : 'ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
+  const fmtDate = (iso, lang = ui) => new Date(iso).toLocaleDateString(lang === 'en' ? 'en-GB' : 'ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
+  const fmtShort = (iso, lang = ui) => new Date(iso).toLocaleDateString(lang === 'en' ? 'en-GB' : 'ro-RO', { day: 'numeric', month: 'short', year: 'numeric' });
 
   async function api(url, opts) {
     const res = await fetch(url, opts);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Eroare de rețea. Încearcă din nou.');
+    if (!res.ok) throw new Error(data.error || tr('network'));
     return data;
   }
 
   // ---------- formular ----------
   function buildForm() {
     const domains = $('#domains');
-    catalog.domains.forEach((d, i) => {
+    const checkedDomain = currentDomain() || catalog.domains[0].id;
+    domains.replaceChildren(...catalog.domains.map((d) => {
       const id = `d-${d.id}`;
-      domains.append(el('div', { class: 'chip' },
-        el('input', { type: 'radio', name: 'domain', id, value: d.id, checked: i === 0 }),
-        el('label', { for: id }, el('span', { class: 'ico', 'aria-hidden': 'true', text: d.icon }), d.ro)));
-    });
-    const horizons = $('#horizons');
-    catalog.horizons.forEach((h) => {
+      return el('div', { class: 'chip' },
+        el('input', { type: 'radio', name: 'domain', id, value: d.id, checked: d.id === checkedDomain }),
+        el('label', { for: id }, el('span', { class: 'ico', 'aria-hidden': 'true', text: d.icon }), d[ui]));
+    }));
+    const checkedHorizon = (document.querySelector('input[name=horizon]:checked') || {}).value || '3m';
+    $('#horizons').replaceChildren(...catalog.horizons.map((h) => {
       const id = `h-${h.id}`;
-      horizons.append(el('div', { class: 'seg' },
-        el('input', { type: 'radio', name: 'horizon', id, value: h.id, checked: h.id === '3m' }),
-        el('label', { for: id, text: h.ro })));
-    });
+      return el('div', { class: 'seg' },
+        el('input', { type: 'radio', name: 'horizon', id, value: h.id, checked: h.id === checkedHorizon }),
+        el('label', { for: id, text: h[ui] }));
+    }));
     const region = $('#region');
-    catalog.regions.forEach((r) => region.append(el('option', { value: r.id, text: r.ro })));
-
-    domains.addEventListener('change', renderExamples);
+    const reg = region.value || 'global';
+    region.replaceChildren(...catalog.regions.map((r) => el('option', { value: r.id, text: r[ui] })));
+    region.value = reg;
     renderExamples();
-
-    const q = $('#question');
-    q.addEventListener('input', () => { $('#qcount').textContent = `${q.value.length}/500`; });
-    $('#form').addEventListener('submit', onSubmit);
   }
 
   function currentDomain() {
@@ -125,9 +217,7 @@
   function renderExamples() {
     const box = $('#examples');
     box.replaceChildren();
-    const d = currentDomain();
-    if (d === 'altul') return;
-    (EXAMPLES[d] || []).forEach((text) => {
+    (tr('examplesBy')[currentDomain()] || []).forEach((text) => {
       const b = el('button', { type: 'button', class: 'example', text });
       b.addEventListener('click', () => {
         const q = $('#question');
@@ -139,25 +229,30 @@
     });
   }
 
+  async function startPrediction(body) {
+    const res = await api('/api/predict', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ui }),
+    });
+    if (res.etaSec) eta = res.etaSec;
+    history.pushState({}, '', `/p/${res.id}`);
+    follow(res.id);
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     const err = $('#form-error');
     err.hidden = true;
-    const body = {
-      domain: currentDomain(),
-      horizon: (document.querySelector('input[name=horizon]:checked') || {}).value,
-      region: $('#region').value,
-      lang: $('#lang').value,
-      question: $('#question').value.trim(),
-    };
     const btn = $('#submit');
     btn.disabled = true;
     try {
-      const { id } = await api('/api/predict', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      await startPrediction({
+        domain: currentDomain(),
+        horizon: (document.querySelector('input[name=horizon]:checked') || {}).value,
+        region: $('#region').value,
+        lang: $('#lang').value,
+        question: $('#question').value.trim(),
+        private: $('#private').checked,
       });
-      history.pushState({}, '', `/p/${id}`);
-      follow(id);
     } catch (ex) {
       err.textContent = ex.message;
       err.hidden = false;
@@ -172,7 +267,13 @@
     clearInterval(timer);
     const tick = () => {
       const s = Math.floor((Date.now() - started) / 1000);
-      $('#elapsed').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      const clock = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      $('#elapsed').textContent = clock;
+      // Bara se apropie de capăt fără să-l atingă; „aproape gata” după durata obișnuită.
+      $('#eta-bar').style.width = `${Math.min(96, (s / eta) * 90)}%`;
+      const left = Math.ceil((eta - s) / 60);
+      $('#eta-text').textContent = s < eta ? tr('etaLeft')(left) : tr('etaAlmost');
+      document.title = `⏳ ${clock} · Nostradamus`;
     };
     tick();
     timer = setInterval(tick, 1000);
@@ -184,39 +285,56 @@
     while (log.children.length > 14) log.firstElementChild.remove();
   }
 
+  // Notificare în browser când previziunea e gata (doar dacă utilizatorul a cerut-o și pagina nu e în față).
+  let wantNotify = false;
+  function setupNotify() {
+    const btn = $('#notify');
+    const supported = 'Notification' in window && Notification.permission !== 'denied';
+    btn.hidden = !supported;
+    btn.disabled = false;
+    btn.textContent = tr(wantNotify ? 'notifyOn' : 'notify');
+  }
+
+  function notifyDone(title, id) {
+    if (!wantNotify || !document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
+    const n = new Notification(tr('readyTitle'), { body: title, icon: '/icons/icon-192.png', tag: id });
+    n.onclick = () => { window.focus(); n.close(); };
+  }
+
   function follow(id) {
     if (source) source.close();
     $('#log').replaceChildren();
-    $('#phase').textContent = 'Oracolul se pregătește…';
+    $('#phase').textContent = tr('preparing');
     $('#progress-sub').textContent = '';
+    setupNotify();
     let searches = 0;
     let settled = false;
     let gotEvent = false;
 
-    source = new EventSource(`/api/predict/${encodeURIComponent(id)}/events`);
+    source = new EventSource(`/api/predict/${encodeURIComponent(id)}/events?ui=${ui}`);
     source.addEventListener('status', (e) => {
       if (!gotEvent) { gotEvent = true; show('progress'); startTimer(); }
       const d = JSON.parse(e.data);
-      $('#phase').textContent = PHASES[d.phase] || PHASES.research;
-      if (d.phase === 'queued') $('#progress-sub').textContent = `Ești al ${d.position}-lea la rând.`;
+      $('#phase').textContent = tr('phases')[d.phase] || tr('phases').research;
+      if (d.phase === 'queued') $('#progress-sub').textContent = tr('queuePos')(d.position);
       else if (d.phase === 'research') $('#progress-sub').textContent = '';
     });
     source.addEventListener('search', (e) => {
       searches++;
-      logLine('🔎', `Caută: „${JSON.parse(e.data).query}”`);
-      $('#progress-sub').textContent = `${searches} ${searches === 1 ? 'căutare' : 'căutări'}`;
+      logLine('🔎', tr('searching')(JSON.parse(e.data).query));
+      $('#progress-sub').textContent = tr('searches')(searches);
     });
     source.addEventListener('results', (e) => {
       const d = JSON.parse(e.data);
-      $('#progress-sub').textContent = `${searches} ${searches === 1 ? 'căutare' : 'căutări'} · ${d.sources} surse găsite`;
+      $('#progress-sub').textContent = `${tr('searches')(searches)} · ${tr('found')(d.sources)}`;
     });
-    source.addEventListener('fetch', (e) => logLine('📖', `Citește: ${JSON.parse(e.data).host}`));
+    source.addEventListener('fetch', (e) => logLine('📖', tr('reading')(JSON.parse(e.data).host)));
     source.addEventListener('thought', (e) => logLine('💭', JSON.parse(e.data).text, 'thought'));
     source.addEventListener('done', (e) => {
       settled = true;
       source.close();
       clearInterval(timer);
-      loadPrediction(JSON.parse(e.data).id);
+      loadPrediction(JSON.parse(e.data).id, gotEvent);
     });
     source.addEventListener('error', (e) => {
       // Eveniment „error” trimis de server (cu mesaj) sau eroare de conexiune (fără date).
@@ -227,9 +345,7 @@
         fail(JSON.parse(e.data).message);
       } else if (source.readyState === EventSource.CLOSED && !settled) {
         clearInterval(timer);
-        fail(gotEvent
-          ? 'Legătura cu serverul s-a întrerupt. Reîncarcă pagina pentru a vedea previziunea.'
-          : 'Previziunea nu există sau nu mai este disponibilă.');
+        fail(tr(gotEvent ? 'lost' : 'missing'));
       }
       // altfel: EventSource se reconectează singur
     });
@@ -237,16 +353,20 @@
 
   function fail(msg) {
     $('#error-msg').textContent = msg;
+    document.title = tr('defaultTitle');
     show('error');
   }
 
   // ---------- rezultat ----------
-  async function loadPrediction(id) {
+  async function loadPrediction(id, fresh = false) {
     try {
-      const rec = await api(`/api/p/${encodeURIComponent(id)}`);
+      const rec = await api(`/api/p/${encodeURIComponent(id)}?ui=${ui}`);
+      current = rec;
       renderPrediction(rec);
+      setupShare(rec);
       show('result');
-      document.title = `${rec.prediction.title || 'Previziune'} — Nostradamus`;
+      document.title = `${rec.prediction.title || 'Nostradamus'} — Nostradamus`;
+      if (fresh) notifyDone(rec.prediction.title, id);
     } catch (ex) {
       fail(ex.message);
     }
@@ -266,11 +386,44 @@
   function checkBadge(c, t, lang) {
     if (!c) return null;
     const icon = { pending: '⏳', true: '✓', false: '✗', unresolved: '…' }[c.status] || '⏳';
-    const label = c.status === 'pending' ? `${t.check.pending} ${fmtDate(c.resolveBy, lang)}` : t.check[c.status];
+    const text = c.status === 'pending' ? `${t.check.pending} ${fmtDate(c.resolveBy, lang)}` : t.check[c.status];
     return el('div', { class: `check check-${c.status}` },
-      el('span', { class: 'check-label' }, el('span', { 'aria-hidden': 'true', text: `${icon} ` }), label),
+      el('span', { class: 'check-label' }, el('span', { 'aria-hidden': 'true', text: `${icon} ` }), text),
       c.evidence ? el('span', { class: 'check-evidence', text: c.evidence }) : null,
       c.url ? el('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer nofollow', text: `${t.source}: ${hostOf(c.url)}` }) : null);
+  }
+
+  /** Evoluția scenariului de bază pentru aceeași întrebare, plus butonul de actualizare. */
+  function historyCard(rec, t, lang) {
+    const rows = (rec.history || []).filter((h) => h.base).map((h) => {
+      const bar = el('b');
+      bar.style.width = `${h.base.probability}%`;
+      const isThis = h.id === rec.id;
+      return el('li', { class: isThis ? 'this' : null },
+        isThis ? el('span', { class: 'h-date', text: `${fmtShort(h.createdAt, lang)} (${t.thisOne})` })
+          : el('a', { class: 'h-date', href: `/p/${h.id}`, 'data-nav': true, text: fmtShort(h.createdAt, lang) }),
+        el('span', { class: 'bar' }, bar),
+        el('span', { class: 'pct', text: `${h.base.probability}%` }));
+    });
+    let refresh = null;
+    if (rec.refreshable && !rec.prediction.declined) {
+      refresh = el('button', { type: 'button', class: 'btn-ghost btn-compact', text: t.refresh });
+      refresh.addEventListener('click', async () => {
+        refresh.disabled = true;
+        try {
+          const { domain, horizon, region, lang: l, question } = rec.request;
+          await startPrediction({ domain, horizon, region, lang: l, question, private: rec.request.private === true });
+        } catch (ex) {
+          toast(ex.message);
+          refresh.disabled = false;
+        }
+      });
+    }
+    if (!rows.length && !refresh) return null;
+    return card(rows.length ? t.history : null,
+      rows.length ? el('p', { class: 'muted', text: t.historyHint }) : null,
+      rows.length ? el('ul', { class: 'history' }, rows) : null,
+      refresh);
   }
 
   function renderPrediction(rec) {
@@ -284,7 +437,8 @@
     const tags = el('div', { class: 'r-tags' },
       el('span', { class: 'tag', text: `${dom ? dom.icon : ''} ${label(catalog.domains, rq.domain, lang)}` }),
       el('span', { class: 'tag', text: `${t.horizon}: ${label(catalog.horizons, rq.horizon, lang)}` }),
-      el('span', { class: 'tag', text: label(catalog.regions, rq.region, lang) }));
+      el('span', { class: 'tag', text: label(catalog.regions, rq.region, lang) }),
+      rq.private ? el('span', { class: 'tag', text: `🔒 ${t.privateTag}` }) : null);
 
     if (p.declined) {
       root.append(el('section', { class: 'card declined' }, tags, el('h1', { text: t.declinedTitle }), el('p', { text: p.declined_reason || p.summary })));
@@ -317,11 +471,14 @@
         ring.style.setProperty('--p', x.probability);
         return el('li', { class: 'pred' }, ring, el('div', {},
           el('p', { class: 'pred-claim', text: x.claim }),
-          el('p', { class: 'pred-meta', text: [x.timeframe, `${t.confidence.split(' ')[0]}: ${t.conf[x.confidence]}`].filter(Boolean).join(' · ') }),
+          el('p', { class: 'pred-meta', text: [x.timeframe, `${t.conf1}: ${t.conf[x.confidence]}`].filter(Boolean).join(' · ') }),
           el('p', { class: 'pred-why', text: x.rationale }),
           checkBadge((rec.checks || [])[i], t, lang)));
       }))));
     }
+
+    const hist = historyCard(rec, t, lang);
+    if (hist) root.append(hist);
 
     if (p.current_state) root.append(card(t.now, el('p', { class: 'text-block', text: p.current_state })));
 
@@ -346,34 +503,46 @@
     root.append(el('p', { class: 'r-foot', text: `${t.made} ${fmtDate(rec.createdAt, lang)} · ${t.research(meta.searches || 0, meta.consulted || 0)}` }));
   }
 
+  // ---------- distribuire ----------
+  function setupShare(rec) {
+    const url = `${location.origin}/p/${rec.id}`;
+    const text = rec.prediction.title || 'Nostradamus';
+    const enc = encodeURIComponent;
+    $('#share-wa').href = `https://wa.me/?text=${enc(`${text} ${url}`)}`;
+    $('#share-fb').href = `https://www.facebook.com/sharer/sharer.php?u=${enc(url)}`;
+    $('#share-x').href = `https://x.com/intent/post?text=${enc(text)}&url=${enc(url)}`;
+    $('#share-tg').href = `https://t.me/share/url?url=${enc(url)}&text=${enc(text)}`;
+    $('#share').hidden = !navigator.share;
+  }
+
   // ---------- palmares ----------
   async function loadTrack() {
     const box = $('#track');
+    const T = tr('track');
     try {
-      const tr = await api('/api/track-record');
-      if (!tr.resolved) {
+      const data = await api('/api/track-record');
+      if (!data.resolved) {
         box.replaceChildren(
-          el('p', { text: 'Oracolul își verifică singur previziunile: după data fiecărei afirmații, caută ce s-a întâmplat de fapt și o marchează ca adevărată sau falsă. Aici se va vedea cât de des are dreptate.' }),
-          el('p', { class: 'muted', text: tr.pending
-            ? `${tr.pending} afirmații așteaptă verificarea. Primele rezultate: după ${fmtDate(tr.nextCheck, 'ro')}.`
-            : 'Încă nu există afirmații de verificat.' }));
+          el('p', { text: T.intro }),
+          el('p', { class: 'muted', text: data.pending ? T.waiting(data.pending, fmtDate(data.nextCheck)) : T.none }));
         return;
       }
-      const pct = Math.round((100 * tr.correct) / tr.resolved);
+      const pct = Math.round((100 * data.correct) / data.resolved);
+      const brier = ui === 'ro' ? String(data.brier).replace('.', ',') : String(data.brier);
       const stats = el('div', { class: 'stats' },
-        el('div', { class: 'stat' }, el('strong', { text: `${pct}%` }), el('span', { text: `previziuni corecte (${tr.correct} din ${tr.resolved})` })),
-        el('div', { class: 'stat' }, el('strong', { text: String(tr.brier).replace('.', ',') }), el('span', { text: 'scor Brier (0 = perfect, 0,25 = cu banul)' })),
-        el('div', { class: 'stat' }, el('strong', { text: String(tr.pending) }), el('span', { text: 'afirmații încă în așteptare' })));
-      const rows = tr.buckets.filter((b) => b.count).map((b) => {
+        el('div', { class: 'stat' }, el('strong', { text: `${pct}%` }), el('span', { text: T.correct(data.correct, data.resolved) })),
+        el('div', { class: 'stat' }, el('strong', { text: brier }), el('span', { text: T.brier })),
+        el('div', { class: 'stat' }, el('strong', { text: String(data.pending) }), el('span', { text: T.pending })));
+      const rows = data.buckets.filter((b) => b.count).map((b) => {
         const bar = el('b');
         bar.style.width = `${b.actual}%`;
-        return el('li', {}, el('span', { class: 'cal-range', text: `Spus ${b.range}` }),
+        return el('li', {}, el('span', { class: 'cal-range', text: T.said(b.range) }),
           el('span', { class: 'bar' }, bar),
-          el('span', { class: 'cal-actual', text: `s-a întâmplat ${b.actual}% (${b.count})` }));
+          el('span', { class: 'cal-actual', text: T.happened(b.actual, b.count) }));
       });
       box.replaceChildren(stats,
-        rows.length ? el('div', {}, el('h3', { text: 'Calibrare' }), el('ul', { class: 'calibration' }, rows)) : null,
-        tr.recent.length ? el('div', {}, el('h3', { text: 'Ultimele verificări' }), el('ul', { class: 'checked-list' }, tr.recent.map((r) => el('li', {},
+        rows.length ? el('div', {}, el('h3', { text: T.calibration }), el('ul', { class: 'calibration' }, rows)) : null,
+        data.recent.length ? el('div', {}, el('h3', { text: T.latest }), el('ul', { class: 'checked-list' }, data.recent.map((r) => el('li', {},
           el('span', { class: r.outcome ? 'ok' : 'ko', text: r.outcome ? '✓ ' : '✗ ' }),
           el('a', { href: `/p/${r.id}`, 'data-nav': true, text: r.claim }),
           el('span', { class: 'muted', text: ` — ${r.probability}%` }))))) : null);
@@ -386,10 +555,9 @@
   async function loadRecent() {
     try {
       const list = await api('/api/recent');
-      const ul = $('#recent');
-      ul.replaceChildren(...list.map((r) => el('li', {}, el('a', { href: `/p/${r.id}`, 'data-nav': true },
+      $('#recent').replaceChildren(...list.map((r) => el('li', {}, el('a', { href: `/p/${r.id}`, 'data-nav': true },
         el('span', { class: 'r-title', text: r.title }),
-        el('span', { class: 'r-meta', text: `${label(catalog.horizons, r.horizon)} · ${fmtDate(r.createdAt, 'ro')}` })))));
+        el('span', { class: 'r-meta', text: `${label(catalog.horizons, r.horizon)} · ${fmtShort(r.createdAt)}` })))));
       $('#recent-empty').hidden = list.length > 0;
     } catch { /* lista recentă e opțională */ }
   }
@@ -402,7 +570,7 @@
     if (m) {
       follow(m[1]);
     } else {
-      document.title = 'Nostradamus — previziuni din datele de azi';
+      document.title = tr('defaultTitle');
       show('form');
       loadTrack();
       loadRecent();
@@ -418,18 +586,69 @@
   });
   window.addEventListener('popstate', route);
 
+  $('#ui-lang').addEventListener('click', () => {
+    ui = ui === 'ro' ? 'en' : 'ro';
+    store.set('ui', ui);
+    $('#lang').value = ui;
+    applyUi();
+    buildForm();
+    if (!$('#view-form').hidden) { loadTrack(); loadRecent(); document.title = tr('defaultTitle'); }
+    if (!$('#view-progress').hidden) setupNotify();
+  });
+
+  $('#notify').addEventListener('click', async () => {
+    const perm = await Notification.requestPermission();
+    wantNotify = perm === 'granted';
+    $('#notify').textContent = tr(wantNotify ? 'notifyOn' : 'notify');
+    $('#notify').disabled = wantNotify;
+    if (perm === 'denied') $('#notify').hidden = true;
+  });
+
   $('#copy-link').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(location.href);
-      toast('Linkul a fost copiat');
+      toast(tr('copied'));
     } catch {
       toast(location.href);
     }
   });
 
+  $('#share').addEventListener('click', () => {
+    if (!current) return;
+    navigator.share({ title: current.prediction.title, url: `${location.origin}/p/${current.id}` }).catch(() => {});
+  });
+
+  $('#print').addEventListener('click', () => window.print());
+
+  // ---------- aplicație instalabilă (PWA) ----------
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    $('#install').hidden = false;
+  });
+  $('#install').addEventListener('click', async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => {});
+    installPrompt = null;
+    $('#install').hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { $('#install').hidden = true; });
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
+
+  // ---------- pornire ----------
+  $('#lang').value = ui;
+  applyUi();
+  $('#domains').addEventListener('change', renderExamples);
+  $('#question').addEventListener('input', () => { $('#qcount').textContent = `${$('#question').value.length}/500`; });
+  $('#form').addEventListener('submit', onSubmit);
+
   api('/api/catalog').then((c) => {
     catalog = c;
     buildForm();
     route();
-  }).catch(() => fail('Aplicația nu s-a putut încărca. Reîncarcă pagina.'));
+  }).catch(() => fail(tr('loadFail')));
 })();

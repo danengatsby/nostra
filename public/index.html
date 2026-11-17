@@ -7,16 +7,22 @@
   <meta name="description" content="Nostradamus caută pe internet cele mai noi informații și face previziuni argumentate, cu probabilități, în economie, politică, tehnologie, sport și alte domenii.">
   <meta name="theme-color" content="#0f1020">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
   <header class="site-header">
+    <div class="header-tools">
+      <button id="install" class="btn-small" type="button" hidden data-i18n="install">Instalează aplicația</button>
+      <button id="ui-lang" class="btn-small" type="button" aria-label="Change language to English">EN</button>
+    </div>
     <a class="brand" href="/" data-nav>
       <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><use href="/icon.svg#mark"/></svg>
       <span class="brand-name">Nostradamus</span>
     </a>
-    <p class="tagline">Previziuni construite din ce se întâmplă acum în lume</p>
+    <p class="tagline" data-i18n="tagline">Previziuni construite din ce se întâmplă acum în lume</p>
   </header>
 
   <main>
@@ -24,33 +30,33 @@
     <section id="view-form" class="view">
       <form id="form" class="card" novalidate>
         <fieldset>
-          <legend><span class="step">1</span> Domeniul</legend>
-          <div id="domains" class="chips" role="radiogroup" aria-label="Domeniul"></div>
+          <legend><span class="step">1</span> <span data-i18n="stepDomain">Domeniul</span></legend>
+          <div id="domains" class="chips" role="radiogroup" data-i18n-aria="stepDomain" aria-label="Domeniul"></div>
         </fieldset>
 
         <fieldset>
-          <legend><span class="step">2</span> Întrebarea ta <span class="optional">(opțional)</span></legend>
-          <textarea id="question" name="question" rows="3" maxlength="500"
+          <legend><span class="step">2</span> <span data-i18n="stepQuestion">Întrebarea ta</span> <span class="optional" data-i18n="optional">(opțional)</span></legend>
+          <textarea id="question" name="question" rows="3" maxlength="500" data-i18n-ph="questionPh"
             placeholder="Ex.: Va scădea inflația din România sub 5% până la finalul perioadei?"></textarea>
           <div class="question-meta">
-            <div id="examples" class="examples" aria-label="Exemple de întrebări"></div>
+            <div id="examples" class="examples" data-i18n-aria="examples" aria-label="Exemple de întrebări"></div>
             <span id="qcount" class="count">0/500</span>
           </div>
-          <p class="hint">Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.</p>
+          <p class="hint" data-i18n="questionHint">Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.</p>
         </fieldset>
 
         <fieldset>
-          <legend><span class="step">3</span> Perioada</legend>
-          <div id="horizons" class="segmented" role="radiogroup" aria-label="Perioada"></div>
+          <legend><span class="step">3</span> <span data-i18n="stepHorizon">Perioada</span></legend>
+          <div id="horizons" class="segmented" role="radiogroup" data-i18n-aria="stepHorizon" aria-label="Perioada"></div>
         </fieldset>
 
         <div class="row">
           <label class="field">
-            <span>Regiunea</span>
+            <span data-i18n="region">Regiunea</span>
             <select id="region" name="region"></select>
           </label>
           <label class="field">
-            <span>Limba răspunsului</span>
+            <span data-i18n="answerLang">Limba răspunsului</span>
             <select id="lang" name="lang">
               <option value="ro">Română</option>
               <option value="en">English</option>
@@ -58,20 +64,26 @@
           </label>
         </div>
 
+        <label class="check-row">
+          <input type="checkbox" id="private" name="private">
+          <span><strong data-i18n="private">Previziune privată</strong>
+            <span class="muted" data-i18n="privateHint">Nu apare în lista publică și nu e indexată de motoarele de căutare. O vede doar cine are linkul.</span></span>
+        </label>
+
         <p id="form-error" class="error" role="alert" hidden></p>
-        <button id="submit" class="btn-primary" type="submit">Consultă oracolul</button>
-        <p class="hint center">Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.</p>
+        <button id="submit" class="btn-primary" type="submit" data-i18n="submit">Consultă oracolul</button>
+        <p class="hint center" data-i18n="duration">Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.</p>
       </form>
 
       <section class="track" aria-labelledby="track-title">
-        <h2 id="track-title">Palmaresul oracolului</h2>
-        <div id="track" class="card"><p class="muted">Se încarcă…</p></div>
+        <h2 id="track-title" data-i18n="trackTitle">Palmaresul oracolului</h2>
+        <div id="track" class="card"><p class="muted" data-i18n="loading">Se încarcă…</p></div>
       </section>
 
       <section class="recent" aria-labelledby="recent-title">
-        <h2 id="recent-title">Previziuni recente</h2>
+        <h2 id="recent-title" data-i18n="recentTitle">Previziuni recente</h2>
         <ul id="recent" class="recent-list"></ul>
-        <p id="recent-empty" class="muted" hidden>Încă nu există previziuni. Fii primul care consultă oracolul.</p>
+        <p id="recent-empty" class="muted" hidden data-i18n="recentEmpty">Încă nu există previziuni. Fii primul care consultă oracolul.</p>
       </section>
     </section>
 
@@ -79,11 +91,13 @@
     <section id="view-progress" class="view" hidden>
       <div class="card progress-card">
         <div class="orb" aria-hidden="true"><span></span></div>
-        <h2 id="phase">Oracolul se pregătește…</h2>
+        <h2 id="phase" data-i18n="preparing">Oracolul se pregătește…</h2>
         <p id="progress-sub" class="muted"></p>
-        <p class="elapsed"><span id="elapsed">0:00</span></p>
+        <div class="eta" aria-hidden="true"><b id="eta-bar"></b></div>
+        <p class="elapsed"><span id="elapsed">0:00</span> <span id="eta-text" class="muted"></span></p>
+        <button id="notify" class="btn-ghost btn-compact" type="button" hidden data-i18n="notify">🔔 Anunță-mă când e gata</button>
         <ol id="log" class="log" aria-live="polite"></ol>
-        <p class="hint center">Poți lăsa pagina deschisă sau poți reveni mai târziu la același link: previziunea se termină oricum.</p>
+        <p class="hint center" data-i18n="leaveHint">Poți lăsa pagina deschisă sau poți reveni mai târziu la același link: previziunea se termină oricum.</p>
       </div>
     </section>
 
@@ -91,23 +105,29 @@
     <section id="view-result" class="view" hidden>
       <article id="result" class="result"></article>
       <div class="result-actions">
-        <button id="copy-link" class="btn-ghost" type="button">Copiază linkul</button>
-        <a class="btn-ghost" href="/" data-nav>O nouă previziune</a>
+        <button id="share" class="btn-ghost" type="button" hidden data-i18n="share">Distribuie</button>
+        <a id="share-wa" class="btn-ghost share" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+        <a id="share-fb" class="btn-ghost share" target="_blank" rel="noopener noreferrer">Facebook</a>
+        <a id="share-x" class="btn-ghost share" target="_blank" rel="noopener noreferrer">X</a>
+        <a id="share-tg" class="btn-ghost share" target="_blank" rel="noopener noreferrer">Telegram</a>
+        <button id="copy-link" class="btn-ghost" type="button" data-i18n="copyLink">Copiază linkul</button>
+        <button id="print" class="btn-ghost" type="button" data-i18n="pdf">Salvează PDF</button>
+        <a class="btn-ghost" href="/" data-nav data-i18n="newForecast">O nouă previziune</a>
       </div>
     </section>
 
     <!-- Eroare -->
     <section id="view-error" class="view" hidden>
       <div class="card center">
-        <h2>Oracolul a tăcut</h2>
+        <h2 data-i18n="errorTitle">Oracolul a tăcut</h2>
         <p id="error-msg"></p>
-        <a class="btn-primary" href="/" data-nav>Încearcă din nou</a>
+        <a class="btn-primary" href="/" data-nav data-i18n="tryAgain">Încearcă din nou</a>
       </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    <p>Previziunile sunt estimări probabilistice generate automat de inteligență artificială pe baza surselor publice găsite la momentul cererii. Nu sunt certitudini și nu reprezintă consultanță financiară, medicală sau juridică.</p>
+    <p data-i18n="disclaimer">Previziunile sunt estimări probabilistice generate automat de inteligență artificială pe baza surselor publice găsite la momentul cererii. Nu sunt certitudini și nu reprezintă consultanță financiară, medicală sau juridică.</p>
   </footer>
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
