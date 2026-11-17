@@ -40,8 +40,8 @@ test.after(() => {
   fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
 });
 
-// La /api/predict se trimite implicit și acordul bifat (obligatoriu cu plata activă).
-const post = (url, body) => fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(url === '/api/predict' ? { consent: true, ...body } : body) });
+// La /api/predict se trimit implicit adresa de email și acordul bifat (obligatorii cu plata activă).
+const post = (url, body) => fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(url === '/api/predict' ? { consent: true, email: 'formular@example.com', ...body } : body) });
 const Q = { domain: 'economie', horizon: '1m', region: 'ro', lang: 'ro' };
 const finish = async (id) => (await (await fetch(`${base}/api/predict/${id}/events`)).text());
 
@@ -158,7 +158,7 @@ test('Stripe: sesiunea de plată cere 1 € pentru comanda corectă, iar plata s
   });
   process.env.STRIPE_SECRET_KEY = 'sk_test_fals';
   try {
-    const order = { id: 'comanda-de-test-0001', ui: 'en', request: { question: 'Will it rain?' } };
+    const order = { id: 'comanda-de-test-0001', ui: 'en', email: 'client@example.com', request: { question: 'Will it rain?' } };
     const { url, session } = await payments.createCheckout(order, 'https://nostradamus.my');
     assert.equal(url, 'https://checkout.stripe.com/c/pay/cs_test_1');
     assert.equal(session, 'cs_test_1');
@@ -166,6 +166,7 @@ test('Stripe: sesiunea de plată cere 1 € pentru comanda corectă, iar plata s
     assert.equal(c.mode, 'payment');
     assert.equal(c.locale, 'en');
     assert.equal(c.client_reference_id, order.id);
+    assert.equal(c.customer_email, 'client@example.com', 'pagina Stripe vine cu adresa completată');
     assert.deepEqual([c.line_items[0].price_data.unit_amount, c.line_items[0].price_data.currency], [100, 'eur']);
     assert.match(c.line_items[0].price_data.product_data.description, /Will it rain\?/);
     assert.equal(c.success_url, `https://nostradamus.my/pay/${order.id}?session_id={CHECKOUT_SESSION_ID}`);
@@ -202,7 +203,7 @@ test('fără acordul bifat nu se deschide plata; acordul se salvează în comand
   const ok = await (await post('/api/predict', { ...Q, question: 'Cu acord?' })).json();
   const o = orders.get(ok.orderId);
   assert.ok(o.consent.at);
-  assert.match(o.consent.terms, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(o.consent.terms, /^\d{4}-\d{2}-\d{2}[a-z]?$/);
 });
 
 test('emailuri: linkul previziunii după plată și anunțul de restituire', async () => {
@@ -214,11 +215,11 @@ test('emailuri: linkul previziunii după plată și anunțul de restituire', asy
   await new Promise((r) => setTimeout(r, 50));
   const ready = mail._sent.slice(before).find((m) => m.text.includes(`/p/${predictionId}`));
   assert.ok(ready, 'emailul cu linkul a plecat');
-  assert.equal(ready.to, 'client@example.com');
+  assert.equal(ready.to, 'formular@example.com', 'adresa din formular are prioritate față de cea de la Stripe');
   assert.match(ready.subject, /Previziunea ta Nostradamus/);
   assert.match(ready.html, /Firma Test SRL · CUI 123/);
   assert.ok(orders.get(orderId).emailSentAt);
-  assert.equal(orders.get(orderId).email, 'client@example.com');
+  assert.equal(orders.get(orderId).email, 'formular@example.com');
 
   // Restituirile din testele anterioare au trimis și ele anunțul.
   assert.ok(mail._sent.some((m) => m.subject === 'Nostradamus: plata ți-a fost returnată' && /erori tehnice/.test(m.text)));
@@ -243,4 +244,19 @@ test('pagina de termeni: firma, prețul, dreptul de retragere, ANPC; linkuri în
   assert.match(home, /id="consent"/);
   const cat = await (await fetch(`${base}/api/catalog`)).json();
   assert.equal(cat.contact, 'contact@example.com');
+});
+
+test('adresa de email: obligatorie și validă înainte de plată', async () => {
+  const missing = await post('/api/predict', { ...Q, question: 'Fără email?', email: '' });
+  assert.equal(missing.status, 400);
+  assert.match((await missing.json()).error, /adresa de email/);
+  for (const bad of ['nu-e-email', 'a@b', 'x@y.c', 'a b@c.ro', '<a@b.ro>']) {
+    const r = await post('/api/predict', { ...Q, question: `Email greșit ${bad}?`, email: bad, ui: 'en' });
+    assert.equal(r.status, 400, bad);
+    assert.match((await r.json()).error, /does not look right/);
+  }
+  const ok = await (await post('/api/predict', { ...Q, question: 'Email bun?', email: ' nume.prenume+tag@firma.ro ' })).json();
+  assert.equal(orders.get(ok.orderId).email, 'nume.prenume+tag@firma.ro');
+  const home = await (await fetch(`${base}/`)).text();
+  assert.ok(home.indexOf('id="email"') < home.indexOf('id="consent"'), 'câmpul de email e înaintea bifei de acord');
 });

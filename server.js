@@ -112,9 +112,13 @@ app.post('/api/predict', async (req, res) => {
   try {
     if (payments.mode() !== 'off') {
       // Fără acordul bifat (termeni + furnizare imediată a conținutului digital) nu se deschide plata.
+      // Adresa la care trimitem previziunea: obligatorie cu plata activă.
+      const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+      if (!email) return res.status(400).json({ error: t('emailRequired', ui) });
+      if (email.length > 254 || !/^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]{2,}$/.test(email)) return res.status(400).json({ error: t('emailInvalid', ui) });
       if (req.body?.consent !== true) return res.status(400).json({ error: t('consentRequired', ui) });
       // Cu plăți active, previziunea pornește abia după ce Stripe confirmă plata.
-      return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req))), etaSec: etaSeconds() });
+      return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email)), etaSec: etaSeconds() });
     }
     res.json({ ...jobs.submit(request, req.ip, ui), etaSec: etaSeconds() });
   } catch (e) {

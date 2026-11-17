@@ -25,6 +25,8 @@
       toPayment: 'Te ducem la pagina de plată…', confirming: 'Confirmăm plata…',
       consent: 'Sunt de acord cu Termenii și confidențialitatea și cer furnizarea imediată a previziunii; înțeleg că, odată furnizată, nu mai pot cere retragerea din contract.',
       readTerms: 'Citește termenii', termsLink: 'Termeni și confidențialitate', contact: 'Contact',
+      emailLabel: 'Adresa de email la care primești previziunea', emailPh: 'nume@exemplu.ro',
+      emailMissing: 'Scrie adresa de email la care să primești previziunea.', emailInvalid: 'Adresa de email nu pare corectă.',
       consentMissing: 'Bifează acordul cu termenii înainte de plată.',
       payPending: 'Plata nu a fost confirmată încă. Dacă ai plătit, previziunea pornește automat — poți reveni la acest link.',
       payExpired: 'Plata nu a fost finalizată, iar pagina de plată a expirat. Nu ți s-a luat niciun ban.',
@@ -81,6 +83,8 @@
       toPayment: 'Taking you to the payment page…', confirming: 'Confirming your payment…',
       consent: 'I agree to the Terms and privacy policy and request immediate supply of the forecast; I understand that once it is supplied I can no longer withdraw from the contract.',
       readTerms: 'Read the terms', termsLink: 'Terms and privacy', contact: 'Contact',
+      emailLabel: 'Email address to receive your forecast', emailPh: 'name@example.com',
+      emailMissing: 'Enter the email address where you want to receive the forecast.', emailInvalid: 'This email address does not look right.',
       consentMissing: 'Please tick the box accepting the terms before paying.',
       payPending: 'The payment has not been confirmed yet. If you paid, the forecast will start automatically — you can come back to this link.',
       payExpired: 'The payment was not completed and the payment page has expired. You have not been charged.',
@@ -157,6 +161,8 @@
     get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* stocare indisponibilă */ } },
   };
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
   const sessionStore = {
     get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } },
     set: (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* indisponibil */ } },
@@ -176,6 +182,7 @@
     }
     $('#pay-hint').hidden = !pay?.required;
     $('#consent-row').hidden = !pay?.required;
+    $('#email-row').hidden = !pay?.required;
     if (catalog?.contact) $('#contact-link').href = `mailto:${catalog.contact}`;
     document.querySelectorAll('[data-i18n-ph]').forEach((n) => { n.placeholder = tr(n.dataset.i18nPh); });
     document.querySelectorAll('[data-i18n-aria]').forEach((n) => n.setAttribute('aria-label', tr(n.dataset.i18nAria)));
@@ -341,6 +348,7 @@
     $('#question').value = body.question || '';
     $('#question').dispatchEvent(new Event('input'));
     $('#private').checked = !!body.private;
+    if (body.email) $('#email').value = body.email;
     renderExamples();
     renderEffortHint();
   }
@@ -349,17 +357,22 @@
     e.preventDefault();
     const err = $('#form-error');
     err.hidden = true;
-    if (catalog.payment?.required && !$('#consent').checked) {
-      err.textContent = tr('consentMissing');
-      err.hidden = false;
-      $('#consent').focus();
-      return;
+    if (catalog.payment?.required) {
+      const email = $('#email').value.trim();
+      const problem = !email ? 'emailMissing' : !EMAIL_RE.test(email) ? 'emailInvalid' : !$('#consent').checked ? 'consentMissing' : null;
+      if (problem) {
+        err.textContent = tr(problem);
+        err.hidden = false;
+        (problem === 'consentMissing' ? $('#consent') : $('#email')).focus();
+        return;
+      }
     }
     const btn = $('#submit');
     btn.disabled = true;
     try {
       await startPrediction({
         consent: $('#consent').checked,
+        email: catalog.payment?.required ? $('#email').value.trim() : undefined,
         domain: currentDomain(),
         horizon: (document.querySelector('input[name=horizon]:checked') || {}).value,
         region: $('#region').value,
