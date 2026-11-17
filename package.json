@@ -1,0 +1,19 @@
+{
+  "name": "nostradamus",
+  "version": "1.0.0",
+  "description": "Nostradamus: previziuni în diverse domenii și perioade, pe baza informațiilor găsite pe internet la momentul cererii",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "DEMO_MODE=1 node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.10.0",
+    "express": "^5.3.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.5"
+  }
+}

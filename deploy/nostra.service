@@ -1,0 +1,32 @@
+# Serviciu systemd care ține Nostradamus pornit (și îl repornește după restartul serverului).
+#
+#   sudo cp deploy/nostra.service /etc/systemd/system/nostra.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now nostra
+#   sudo systemctl restart nostra     # după modificarea fișierului .env
+#   journalctl -u nostra -f           # jurnalul aplicației
+
+[Unit]
+Description=Nostradamus - previziuni
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/var/www/nostra
+Environment=NODE_ENV=production
+ExecStart=/usr/local/bin/node /var/www/nostra/server.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/www/nostra/data
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SyslogIdentifier=nostra
+
+[Install]
+WantedBy=multi-user.target

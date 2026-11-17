@@ -1,0 +1,188 @@
+'use strict';
+// Nostradamus — server web: servește interfața și API-ul de previziuni.
+
+const path = require('node:path');
+const fs = require('node:fs');
+
+const envFile = path.join(__dirname, '.env');
+if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
+
+const express = require('express');
+const catalog = require('./lib/catalog');
+const store = require('./lib/store');
+const jobs = require('./lib/jobs');
+const seo = require('./lib/seo');
+const verify = require('./lib/verify');
+
+const PORT = Number(process.env.PORT || 3200);
+const HOST = process.env.HOST || '127.0.0.1';
+const PUBLIC = path.join(__dirname, 'public');
+
+const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 'loopback');
+
+const CSP = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' data:",
+  "connect-src 'self'", "font-src 'self'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'self'",
+].join('; ');
+
+app.use((req, res, next) => {
+  res.set({
+    'Content-Security-Policy': CSP,
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  });
+  next();
+});
+
+app.use(express.json({ limit: '8kb' }));
+
+// --- API ---
+
+app.get('/api/catalog', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600').json(catalog.publicCatalog());
+});
+
+/** Validează cererea venită din formular; întoarce un obiect curat sau aruncă un mesaj pentru utilizator. */
+function parseRequest(body = {}) {
+  const pick = (v, map, fallback) => (typeof v === 'string' && map[v] ? v : fallback);
+  const req = {
+    domain: pick(body.domain, catalog.DOMAIN, null),
+    horizon: pick(body.horizon, catalog.HORIZON, null),
+    region: pick(body.region, catalog.REGION, 'global'),
+    lang: catalog.LANGS.includes(body.lang) ? body.lang : 'ro',
+    question: typeof body.question === 'string' ? body.question.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').replace(/\s+/g, ' ').trim() : '',
+  };
+  if (!req.domain) throw new Error('Alege un domeniu.');
+  if (!req.horizon) throw new Error('Alege perioada previziunii.');
+  if (req.question.length > 500) throw new Error('Întrebarea poate avea cel mult 500 de caractere.');
+  if (req.domain === 'altul' && req.question.length < 5) throw new Error('Pentru „Alt domeniu” scrie întrebarea ta.');
+  return req;
+}
+
+app.post('/api/predict', (req, res) => {
+  let request;
+  try {
+    request = parseRequest(req.body);
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  try {
+    res.json(jobs.submit(request, req.ip));
+  } catch (e) {
+    if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: e.message });
+    console.error('[predict]', e);
+    res.status(500).json({ error: 'Eroare internă. Încearcă din nou.' });
+  }
+});
+
+// Flux de progres (Server-Sent Events). Retrimite tot ce s-a întâmplat până acum, apoi evenimentele noi.
+app.get('/api/predict/:id/events', (req, res) => {
+  const { id } = req.params;
+  const job = jobs.get(id);
+  if (!job && !store.get(id)) return res.status(404).json({ error: 'Previziunea nu există.' });
+
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  const send = (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+
+  if (!job || job.status === 'done') {
+    send({ type: 'done', data: { id } });
+    return res.end();
+  }
+  for (const ev of job.events) send(ev);
+  if (job.status === 'error') return res.end();
+
+  const onEvent = (ev) => {
+    send(ev);
+    if (ev.type === 'done' || ev.type === 'error') cleanup(true);
+  };
+  const ping = setInterval(() => res.write(': ping\n\n'), 20000);
+  const cleanup = (end) => {
+    clearInterval(ping);
+    job.bus.off('event', onEvent);
+    if (end) res.end();
+  };
+  job.bus.on('event', onEvent);
+  req.on('close', () => cleanup(false));
+});
+
+app.get('/api/p/:id', (req, res) => {
+  const rec = store.get(req.params.id);
+  if (!rec) return res.status(404).json({ error: 'Previziunea nu există.' });
+  const { id, createdAt, request, prediction, meta, verification } = rec;
+  const items = new Map((verification?.items || []).map((it) => [it.index, it]));
+  res.set('Cache-Control', 'public, max-age=300').json({
+    id, createdAt, request, prediction,
+    // Pentru fiecare afirmație: data verificării și, dacă a fost verificată, rezultatul.
+    checks: prediction.predictions.map((p, i) => {
+      const it = items.get(i);
+      return { resolveBy: verify.resolveDate(rec, p), status: it?.status || 'pending', evidence: it?.evidence || '', url: it?.url || null };
+    }),
+    meta: { searches: meta.searches, fetches: meta.fetches, consulted: meta.consulted, durationMs: meta.durationMs },
+  });
+});
+
+// Palmaresul oracolului (recalculat cel mult o dată la 5 minute).
+let trackCache = { at: 0, data: null };
+app.get('/api/track-record', (req, res) => {
+  if (Date.now() - trackCache.at > 300000) trackCache = { at: Date.now(), data: verify.trackRecord() };
+  res.set('Cache-Control', 'public, max-age=300').json(trackCache.data);
+});
+
+app.get('/api/recent', (req, res) => {
+  res.set('Cache-Control', 'no-cache').json(store.recent(24));
+});
+
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
+
+// --- Interfața ---
+
+// Imaginea de previzualizare a linkului: /og/site.png sau /og/<id>.png (generată o singură dată).
+app.get('/og/:name.png', async (req, res) => {
+  const { name } = req.params;
+  const rec = name === 'site' ? null : store.get(name);
+  if (name !== 'site' && (!rec || rec.prediction.declined)) return res.status(404).end();
+  try {
+    res.set('Cache-Control', 'public, max-age=86400').sendFile(await seo.ogImage(name, rec));
+  } catch (e) {
+    console.error('[og]', name, e.message);
+    res.status(500).end();
+  }
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(`User-agent: *\nDisallow: /api/\nSitemap: ${seo.BASE_URL}/sitemap.xml\n`);
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(seo.sitemap(store.recent(5000)));
+});
+
+app.use(express.static(PUBLIC, { index: false, maxAge: '1h' }));
+
+// Pagina e aceeași aplicație, dar cu titlul, descrierea și imaginea previziunii puse de server,
+// ca linkurile distribuite să arate previziunea, nu doar numele site-ului.
+const sendPage = (res, rec) => res.set('Cache-Control', 'no-cache').type('html').send(seo.renderPage(rec));
+app.get('/', (req, res) => sendPage(res, null));
+app.get('/p/:id', (req, res) => sendPage(res, store.get(req.params.id)));
+app.use((req, res) => res.status(404).type('html').send(seo.renderPage(null)));
+
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed' || err.type === 'entity.too.large') return res.status(400).json({ error: 'Cerere invalidă.' });
+  console.error(err);
+  res.status(500).json({ error: 'Eroare internă.' });
+});
+
+store.init();
+if (require.main === module) {
+  if (process.env.DEMO_MODE !== '1' && !process.env.ANTHROPIC_API_KEY) {
+    console.warn('ATENȚIE: ANTHROPIC_API_KEY lipsește din .env — previziunile vor eșua. (Pentru probe: DEMO_MODE=1)');
+  }
+  verify.start();
+  app.listen(PORT, HOST, () => console.log(`Nostradamus pornit pe http://${HOST}:${PORT}${process.env.DEMO_MODE === '1' ? ' (DEMO)' : ''}`));
+}
+
+module.exports = { app, parseRequest };
