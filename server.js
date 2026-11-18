@@ -19,6 +19,10 @@ const admin = require('./lib/admin');
 const payments = require('./lib/payments');
 const orders = require('./lib/orders');
 const legal = require('./lib/legal');
+const adminauth = require('./lib/adminauth');
+const mail = require('./lib/mail');
+const events = require('./lib/events');
+const crypto = require('node:crypto');
 const { t } = require('./lib/messages');
 
 const PORT = Number(process.env.PORT || 3200);
@@ -209,6 +213,9 @@ app.get('/api/recent', (req, res) => {
   res.set('Cache-Control', 'no-cache').json(store.recent(24));
 });
 
+// Pentru butonul „Statistici”: browserul are acces la statistici?
+app.get('/api/me', (req, res) => res.set('Cache-Control', 'no-store').json({ admin: !!adminauth.sessionEmail(req) }));
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // --- Interfața ---
@@ -218,6 +225,45 @@ app.get(['/termeni', '/terms'], (req, res) => res.set('Cache-Control', 'public, 
 
 // Administrare (parola din ADMIN_PASSWORD).
 app.get('/admin', admin.auth, admin.page);
+
+// Accesul la statistici fără parolă: linkul de unică folosință trimis pe email.
+const adminForm = express.urlencoded({ extended: false, limit: '2kb' });
+const ipKey = (req) => crypto.createHash('sha256').update(`nostra-admin:${req.ip}`).digest('base64url').slice(0, 16);
+app.post('/admin/link', adminForm, async (req, res) => {
+  const email = String(req.body?.email || '').trim().slice(0, 254);
+  const token = adminauth.createLink(email);
+  if (token) {
+    try {
+      await mail.sendAdminLink(email, `${seo.BASE_URL_FOR(req)}/admin/acces?t=${token}`, adminauth.LINK_MINUTES);
+      events.log('admin', { what: 'link-trimis' });
+    } catch (e) {
+      console.error('[admin] linkul nu a putut fi trimis:', e.message);
+    }
+  }
+  // Același răspuns pentru orice adresă: pagina nu dezvăluie cine are acces.
+  admin.loginPage(res, 'Dacă adresa are acces la statistici, ți-am trimis un email cu linkul. Verifică și dosarul Spam.');
+});
+app.get('/admin/acces', (req, res) => {
+  const email = adminauth.consumeLink(req.query.t);
+  if (!email) return admin.loginPage(res.status(400), '', 'Linkul a expirat sau a fost deja folosit. Cere unul nou.');
+  adminauth.setSession(res, email);
+  events.log('admin', { what: 'acces-prin-email' });
+  res.redirect(303, '/admin');
+});
+app.post('/admin/parola', adminForm, (req, res) => {
+  const k = ipKey(req);
+  if (!adminauth.passwordAllowed(k)) return admin.loginPage(res.status(429), '', 'Prea multe încercări. Încearcă din nou peste o oră.');
+  if (!adminauth.passwordOk(req.body?.password)) {
+    adminauth.passwordFailed(k);
+    return admin.loginPage(res.status(401), '', 'Parola nu e corectă.');
+  }
+  adminauth.setSession(res, 'password');
+  res.redirect(303, '/admin');
+});
+app.get('/admin/iesire', (req, res) => {
+  adminauth.clearSession(res);
+  res.redirect(303, '/');
+});
 
 // Imaginea de previzualizare a linkului: /og/site.png sau /og/<id>.png (generată o singură dată).
 app.get('/og/:name.png', async (req, res) => {

@@ -15,7 +15,7 @@
   const U = {
     ro: {
       tagline: 'Previziuni construite din ce se întâmplă acum în lume',
-      install: 'Instalează aplicația', stepDomain: 'Domeniul', stepQuestion: 'Întrebarea ta', optional: '(opțional)',
+      install: 'Instalează aplicația', stats: '📊 Statistici', stepDomain: 'Domeniul', stepQuestion: 'Întrebarea ta', optional: '(opțional)',
       questionPh: 'Ex.: Va scădea inflația din România sub 5% până la finalul perioadei?', examples: 'Exemple de întrebări',
       questionHint: 'Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.',
       stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului', effort: 'Efortul oracolului',
@@ -73,7 +73,7 @@
     },
     en: {
       tagline: 'Forecasts built from what is happening in the world right now',
-      install: 'Install the app', stepDomain: 'Domain', stepQuestion: 'Your question', optional: '(optional)',
+      install: 'Install the app', stats: '📊 Statistics', stepDomain: 'Domain', stepQuestion: 'Your question', optional: '(optional)',
       questionPh: 'E.g.: Will euro area inflation fall below 2% by the end of the period?', examples: 'Example questions',
       questionHint: 'Without a question, the oracle tells you what matters most to expect in the chosen domain and region.',
       stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language', effort: 'Oracle effort',
@@ -794,6 +794,9 @@
   $('#efforts').addEventListener('change', renderEffortHint);
   $('#question').addEventListener('input', () => { $('#qcount').textContent = `${$('#question').value.length}/500`; });
   $('#form').addEventListener('submit', onSubmit);
+
+  // Butonul „Statistici” apare doar în browserele care au primit accesul (linkul de pe email).
+  api('/api/me').then((me) => { $('#stats').hidden = !me.admin; }).catch(() => {});
 
   api('/api/catalog').then((c) => {
     catalog = c;

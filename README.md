@@ -77,8 +77,10 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
   imediată a conținutului digital, OUG 34/2014 art. 16 lit. m); fără ea serverul nu deschide plata, iar acordul se
   salvează în comandă. După plată, clientul primește pe emailul folosit la Stripe linkul previziunii (sau anunțul de
   restituire), prin SMTP (`SMTP_*`, `MAIL_FROM`); dacă trimiterea eșuează, se reîncearcă la verificarea periodică.
-- **Administrare** (`/admin`, `lib/admin.js`) – protejată cu parola `ADMIN_PASSWORD` din `.env` (orice nume de
-  utilizator): bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
+- **Statistici / administrare** (`/admin`, `lib/admin.js`, `lib/adminauth.js`) – fără parolă pentru adresele din
+  `ADMIN_EMAILS`: pe pagina /admin scrii adresa, primești pe email un link de unică folosință (30 de minute), iar
+  browserul rămâne recunoscut 180 de zile (cookie semnat, HttpOnly); în el apare pe site butonul „📊 Statistici”.
+  Rezervă: parola `ADMIN_PASSWORD` (formular, cel mult 10 încercări greșite pe oră, sau HTTP Basic). Conținut: bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
   întrebările private) și erorile recente (`data/events.json`).
 - **Ce refuză oracolul** – întrebări despre persoane private, decese sau sănătatea cuiva, numere la loterie
   și orice ar putea face rău. Previziunile despre sănătate, bani sau drept sunt informative, nu sfaturi.
