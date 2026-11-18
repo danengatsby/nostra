@@ -80,6 +80,8 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
 - **Statistici / administrare** (`/admin`, `lib/admin.js`, `lib/adminauth.js`) – fără parolă pentru adresele din
   `ADMIN_EMAILS`: pe pagina /admin scrii adresa, primești pe email un link de unică folosință (30 de minute), iar
   browserul rămâne recunoscut 180 de zile (cookie semnat, HttpOnly); în el apare pe site butonul „📊 Statistici”.
+  La cererea proprietarului, butonul apare și direct sub câmpul de email din formular când se scrie o adresă din
+  `ADMIN_EMAILS` (fără link): serverul confirmă adresa (cel mult 20 de verificări pe oră per IP) și deschide statisticile.
   Rezervă: parola `ADMIN_PASSWORD` (formular, cel mult 10 încercări greșite pe oră, sau HTTP Basic). Conținut: bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
   întrebările private) și erorile recente (`data/events.json`).
 - **Ce refuză oracolul** – întrebări despre persoane private, decese sau sănătatea cuiva, numere la loterie

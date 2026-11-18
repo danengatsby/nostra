@@ -216,6 +216,22 @@ app.get('/api/recent', (req, res) => {
 // Pentru butonul „Statistici”: browserul are acces la statistici?
 app.get('/api/me', (req, res) => res.set('Cache-Control', 'no-store').json({ admin: !!adminauth.sessionEmail(req) }));
 
+// Accesul direct, după adresa de email scrisă în formular (fără link și fără parolă), cerut explicit de
+// proprietar. Limitat la 20 de verificări pe oră de la același IP, ca adresa să nu poată fi ghicită automat.
+const checks = new Map();
+function checkAllowed(req) {
+  const k = ipKey(req);
+  const now = Date.now();
+  const list = (checks.get(k) || []).filter((t) => now - t < 3600000);
+  if (list.length >= 20) return false;
+  checks.set(k, [...list, now]);
+  return true;
+}
+app.post('/api/admin/check', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!checkAllowed(req)) return res.json({ admin: false });
+  res.json({ admin: adminauth.isAdminEmail(req.body?.email) });
+});
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // --- Interfața ---
@@ -250,6 +266,14 @@ app.get('/admin/acces', (req, res) => {
   events.log('admin', { what: 'acces-prin-email' });
   res.redirect(303, '/admin');
 });
+app.post('/admin/email-acces', adminForm, (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!checkAllowed(req) || !adminauth.isAdminEmail(email)) return res.redirect(303, '/admin');
+  adminauth.setSession(res, email);
+  events.log('admin', { what: 'acces-prin-adresa' });
+  res.redirect(303, '/admin');
+});
+
 app.post('/admin/parola', adminForm, (req, res) => {
   const k = ipKey(req);
   if (!adminauth.passwordAllowed(k)) return admin.loginPage(res.status(429), '', 'Prea multe încercări. Încearcă din nou peste o oră.');

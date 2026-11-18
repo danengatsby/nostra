@@ -103,3 +103,28 @@ test('ieșirea șterge accesul din browser', async () => {
   assert.equal(res.status, 303);
   assert.match(res.headers.get('set-cookie'), /nostra_admin=;.*Max-Age=0/);
 });
+
+test('accesul după adresa scrisă în formular: butonul apare doar pentru adresa cu acces și deschide statisticile', async () => {
+  const check = async (email) => (await (await fetch(`${base}/api/admin/check`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) })).json()).admin;
+  assert.equal(await check('altcineva@example.com'), false);
+  assert.equal(await check(' SEF@example.com '), true);
+
+  const home = await (await fetch(`${base}/`)).text();
+  assert.match(home, /id="stats-inline"[^>]*hidden/);
+  assert.doesNotMatch(home + await (await fetch(`${base}/app.js`)).text(), /sef@example\.com/i, 'adresa nu apare în pagină');
+
+  const bad = await form('/admin/email-acces', { email: 'altcineva@example.com' });
+  assert.equal(bad.status, 303);
+  assert.equal(bad.headers.get('set-cookie'), null);
+
+  const ok = await form('/admin/email-acces', { email: 'sef@example.com' });
+  assert.equal(ok.status, 303);
+  assert.equal(ok.headers.get('location'), '/admin');
+  const cookie = cookieOf(ok);
+  assert.equal(await me(cookie), true);
+  assert.equal((await fetch(`${base}/admin`, { headers: { Cookie: cookie } })).status, 200);
+
+  // Cel mult 20 de verificări pe oră de la același IP (aici s-au folosit deja 4).
+  for (let i = 0; i < 16; i++) await check(`ghicit${i}@example.com`);
+  assert.equal(await check('sef@example.com'), false, 'după limită, nici adresa corectă nu mai e confirmată');
+});

@@ -795,8 +795,32 @@
   $('#question').addEventListener('input', () => { $('#qcount').textContent = `${$('#question').value.length}/500`; });
   $('#form').addEventListener('submit', onSubmit);
 
-  // Butonul „Statistici” apare doar în browserele care au primit accesul (linkul de pe email).
+  // Butonul „Statistici” din antet: în browserele care au deschis deja statisticile.
   api('/api/me').then((me) => { $('#stats').hidden = !me.admin; }).catch(() => {});
+
+  // Butonul „Statistici” de sub câmpul de email: apare când adresa scrisă are acces la statistici.
+  // Lista adreselor nu e în pagină; serverul spune doar dacă adresa scrisă e una dintre ele.
+  let statsTimer = null;
+  let statsAsked = '';
+  $('#email').addEventListener('input', () => {
+    clearTimeout(statsTimer);
+    const email = $('#email').value.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) { $('#stats-inline').hidden = true; return; }
+    statsTimer = setTimeout(async () => {
+      if (email === statsAsked) return;
+      statsAsked = email;
+      try {
+        const r = await api('/api/admin/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+        if ($('#email').value.trim().toLowerCase() === email) $('#stats-inline').hidden = !r.admin;
+      } catch { /* fără buton */ }
+    }, 500);
+  });
+  $('#stats-inline').addEventListener('click', () => {
+    // Formular obișnuit (POST), ca serverul să pună accesul în browser și să deschidă statisticile.
+    const f = el('form', { method: 'post', action: '/admin/email-acces' }, el('input', { type: 'hidden', name: 'email', value: $('#email').value.trim() }));
+    document.body.append(f);
+    f.submit();
+  });
 
   api('/api/catalog').then((c) => {
     catalog = c;
