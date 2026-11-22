@@ -12,6 +12,7 @@ if (!underTest && fs.existsSync(envFile)) process.loadEnvFile(envFile);
 const express = require('express');
 const catalog = require('./lib/catalog');
 const store = require('./lib/store');
+const operations = require('./lib/operations');
 const jobs = require('./lib/jobs');
 const seo = require('./lib/seo');
 const verify = require('./lib/verify');
@@ -22,7 +23,7 @@ const legal = require('./lib/legal');
 const adminauth = require('./lib/adminauth');
 const mail = require('./lib/mail');
 const events = require('./lib/events');
-const crypto = require('node:crypto');
+const privacy = require('./lib/privacy');
 const { t } = require('./lib/messages');
 
 const PORT = Number(process.env.PORT || 3200);
@@ -50,15 +51,20 @@ app.use((req, res, next) => {
 
 // Webhook Stripe: plata confirmată direct de Stripe (semnătura se verifică pe corpul brut al cererii).
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
-  let orderId;
+  let event;
   try {
-    orderId = payments.webhookOrderId(req.body, req.get('stripe-signature'));
+    event = payments.webhookEvent(req.body, req.get('stripe-signature'));
   } catch (e) {
     console.warn('[webhook] respins:', e.message);
     return res.status(400).send('invalid');
   }
   try {
-    if (orderId) await orders.confirm(orderId);
+    const object = event.data.object;
+    if (['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type)) {
+      await orders.confirm(object.client_reference_id);
+    } else if (['refund.updated', 'refund.failed'].includes(event.type)) {
+      await orders.refreshRefund(object.metadata?.order_id, object.id);
+    }
     res.json({ received: true });
   } catch (e) {
     console.error('[webhook]', e.message);
@@ -70,9 +76,25 @@ app.use(express.json({ limit: '8kb' }));
 
 // --- API ---
 
+app.get('/healthz', (req, res) => {
+  operations.database().prepare('SELECT id FROM jobs LIMIT 1').get();
+  res.set('Cache-Control', 'no-store').json({ status: 'ok', pending: jobs.pending() });
+});
+
 app.get('/api/catalog', (req, res) => {
   const payment = { required: payments.mode() !== 'off', price: payments.priceLabel() };
-  res.set('Cache-Control', 'public, max-age=300').json({ ...catalog.publicCatalog(), payment, contact: legal.company().email });
+  res.set('Cache-Control', 'public, max-age=300').json({ ...catalog.publicCatalog(), freeDisplay: true, formConversionEnabled: true, payment, contact: legal.company().email });
+});
+
+app.post('/api/form-visits', (req, res) => {
+  const { id, event, device } = req.body || {};
+  if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) return res.sendStatus(400);
+  if (event === 'visit' && ['mobile', 'desktop'].includes(device)) {
+    operations.visitForm(id, device, catalog.screenEmailRequired());
+  } else if (event === 'display') {
+    if (!operations.displayReport(id)) return res.sendStatus(404);
+  } else return res.sendStatus(400);
+  res.status(204).end();
 });
 
 const uiLang = (v) => (v === 'en' ? 'en' : 'ro');
@@ -82,7 +104,7 @@ const uiLang = (v) => (v === 'en' ? 'en' : 'ro');
  * în limba interfeței (`ui`).
  */
 function parseRequest(body = {}, ui = 'ro') {
-  const pick = (v, map, fallback) => (typeof v === 'string' && map[v] ? v : fallback);
+  const pick = (v, map, fallback) => (typeof v === 'string' && Object.hasOwn(map, v) ? v : fallback);
   const req = {
     domain: pick(body.domain, catalog.DOMAIN, null),
     horizon: pick(body.horizon, catalog.HORIZON, null),
@@ -90,7 +112,7 @@ function parseRequest(body = {}, ui = 'ro') {
     lang: catalog.LANGS.includes(body.lang) ? body.lang : 'ro',
     question: typeof body.question === 'string' ? body.question.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '').replace(/\s+/g, ' ').trim() : '',
   };
-  if (body.private === true) req.private = true; // nu apare în listele publice și nu e indexată
+  if (body.private !== false) req.private = true; // nu apare în listele publice și nu e indexată
   req.effort = catalog.EFFORT_IDS.includes(body.effort) ? body.effort : catalog.defaultEffort();
   if (!req.domain) throw new Error(t('pickDomain', ui));
   if (!req.horizon) throw new Error(t('pickHorizon', ui));
@@ -105,40 +127,85 @@ function etaSeconds() {
   return d.length ? Math.max(15, Math.round(d.reduce((a, b) => a + b, 0) / d.length / 1000)) : 120;
 }
 
+function requestEmail(body, ui) {
+  const email = typeof body?.email === 'string' ? body.email.trim() : '';
+  if (!email) return { error: t('emailRequired', ui) };
+  if (email.length > 254 || !/^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]{2,}$/.test(email)) return { error: t('emailInvalid', ui) };
+  return { email };
+}
+
+function deliveryEmail(body, ui) {
+  const contact = requestEmail(body, ui);
+  if (contact.error) return contact;
+  if (body?.consent !== true) return { error: t('consentRequired', ui) };
+  return contact;
+}
+
 app.post('/api/predict', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   const ui = uiLang(req.body?.ui);
   let request;
   try {
+    if (req.body?.delivery !== undefined && !['screen', 'email'].includes(req.body.delivery)) throw new Error(t('badRequest', ui));
     request = parseRequest(req.body, ui);
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }
+  const screen = req.body.delivery === 'screen' || (req.body.delivery === undefined && payments.mode() === 'off');
+  if (screen && (catalog.screenEmailRequired() || req.body.email)) {
+    const contact = requestEmail(req.body, ui);
+    if (contact.error) return res.status(400).json({ error: !req.body.email ? t('screenEmailRequired', ui) : contact.error });
+  }
   try {
-    if (payments.mode() !== 'off') {
+    if (req.body?.delivery === 'email' && payments.mode() === 'off') return res.status(503).json({ error: t('paymentsOff', ui) });
+    const privateScope = request.private ? privacy.sessionScope(req, privacy.protectResponse(res)) : null;
+    if (payments.mode() !== 'off' && req.body?.delivery !== 'screen') {
       // Fără acordul bifat (termeni + furnizare imediată a conținutului digital) nu se deschide plata.
       // Adresa la care trimitem previziunea: obligatorie cu plata activă.
-      const email = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
-      if (!email) return res.status(400).json({ error: t('emailRequired', ui) });
-      if (email.length > 254 || !/^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]{2,}$/.test(email)) return res.status(400).json({ error: t('emailInvalid', ui) });
-      if (req.body?.consent !== true) return res.status(400).json({ error: t('consentRequired', ui) });
+      const { email, error } = deliveryEmail(req.body, ui);
+      if (error) return res.status(400).json({ error });
       // Cu plăți active, previziunea pornește abia după ce Stripe confirmă plata.
-      return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email)), etaSec: etaSeconds() });
+      return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email, privateScope)), etaSec: etaSeconds() });
     }
-    res.json({ ...jobs.submit(request, req.ip, ui), etaSec: etaSeconds() });
+    const result = jobs.submit(request, req.ip, ui, { privateScope });
+    operations.count('screen');
+    res.json({ ...result, etaSec: etaSeconds() });
   } catch (e) {
     if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: e.message });
     console.error('[predict]', e?.message || e);
-    res.status(500).json({ error: t(payments.mode() !== 'off' ? 'paymentError' : 'internal', ui) });
+    res.status(500).json({ error: t(payments.mode() !== 'off' && req.body?.delivery !== 'screen' ? 'paymentError' : 'internal', ui) });
+  }
+});
+
+// După lectura gratuită se poate cumpăra trimiterea aceluiași rezultat, fără alt apel AI.
+app.post('/api/p/:id/email', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const ui = uiLang(req.body?.ui);
+  const rec = store.get(req.params.id);
+  if (!rec) return res.status(404).json({ error: t('notFound', ui) });
+  if (rec.request.private) privacy.protectResponse(res);
+  if (payments.mode() === 'off') return res.status(503).json({ error: t('paymentsOff', ui) });
+  if (rec.prediction.declined) return res.status(400).json({ error: t('refused', ui) });
+  const { email, error } = deliveryEmail(req.body, ui);
+  if (error) return res.status(400).json({ error });
+  try {
+    res.json(await orders.create(rec.request, ui, req.ip, seo.BASE_URL_FOR(req), email, null, { deliveryPredictionId: rec.id }));
+  } catch (e) {
+    if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: e.message });
+    console.error('[email checkout]', e?.message || e);
+    res.status(500).json({ error: t('paymentError', ui) });
   }
 });
 
 // Întoarcerea de pe pagina de plată: verificăm plata la Stripe și pornim previziunea.
 app.post('/api/orders/:id/confirm', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (orders.get(req.params.id)?.request.private) privacy.protectResponse(res);
   const ui = uiLang(req.body?.ui);
   try {
     const st = await orders.confirm(req.params.id);
     if (!st) return res.status(404).json({ error: t('orderNotFound', ui) });
-    res.set('Cache-Control', 'no-store').json(st);
+    res.json(st);
   } catch (e) {
     console.error('[confirm]', e?.message || e);
     res.status(502).json({ error: t('unavailable', ui) });
@@ -149,9 +216,11 @@ app.post('/api/orders/:id/confirm', async (req, res) => {
 app.get('/api/predict/:id/events', (req, res) => {
   const { id } = req.params;
   const job = jobs.get(id);
-  if (!job && !store.get(id)) return res.status(404).json({ error: t('notFound', uiLang(req.query.ui)) });
+  const rec = !job ? store.get(id) : null;
+  if (!job && !rec) return res.status(404).json({ error: t('notFound', uiLang(req.query.ui)) });
 
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
+  if (job?.req?.private || rec?.request.private) privacy.protectResponse(res);
   res.flushHeaders();
   const send = (ev) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
 
@@ -181,7 +250,7 @@ app.get('/api/p/:id', (req, res) => {
   if (!rec) return res.status(404).json({ error: t('notFound', uiLang(req.query.ui)) });
   const { id, createdAt, request, prediction, meta, verification } = rec;
   // Aceeași întrebare pusă la momente diferite: cum s-a schimbat scenariul de bază (doar previziuni publice).
-  const series = request.private ? [] : store.series(rec.key);
+  const series = request.private ? [] : store.series(request, rec.key.endsWith('|lite') ? 'lite' : 'main');
   const history = series.length > 1 ? series.map((s) => {
     const r = s.id === id ? rec : store.get(s.id);
     const base = r?.prediction.scenarios?.[0];
@@ -191,22 +260,46 @@ app.get('/api/p/:id', (req, res) => {
   const latest = series.length ? series[series.length - 1].createdAt : createdAt;
   const refreshable = Date.now() - Date.parse(latest) > catalog.HORIZON[request.horizon].cacheHours * 3600000;
   const items = new Map((verification?.items || []).map((it) => [it.index, it]));
-  res.set('Cache-Control', 'public, max-age=300').json({
+  res.set('Cache-Control', 'public, max-age=300');
+  if (request.private) privacy.protectResponse(res);
+  const dates = prediction.predictions.map((claim, i) => verify.nextCheckTime(rec, claim, items.get(i))).filter(Number.isFinite);
+  res.json({
+    nextCheckAt: dates.length && process.env.VERIFY_ENABLED !== '0' ? new Date(Math.min(...dates)).toISOString() : null,
     id, createdAt, request, prediction, history, refreshable, refunded: meta.refunded === true,
     // Pentru fiecare afirmație: data verificării și, dacă a fost verificată, rezultatul.
     checks: prediction.predictions.map((p, i) => {
       const it = items.get(i);
-      return { resolveBy: verify.resolveDate(rec, p), status: it?.status || 'pending', evidence: it?.evidence || '', url: it?.url || null };
+      return { resolveBy: verify.resolveDate(rec, p), ...verify.checkResult(it) };
     }),
     meta: { searches: meta.searches, fetches: meta.fetches, consulted: meta.consulted, durationMs: meta.durationMs, tier: meta.tier || 'main' },
   });
 });
 
-// Palmaresul oracolului (recalculat cel mult o dată la 5 minute).
+// Palmaresul nefiltrat are cache; filtrele se validează înainte de a calcula grupul selectat.
 let trackCache = { at: 0, data: null };
 app.get('/api/track-record', (req, res) => {
+  const filters = {};
+  for (const [name, allowed] of [['domain', Object.keys(catalog.DOMAIN)], ['horizon', Object.keys(catalog.HORIZON)], ['tier', ['main', 'lite']]]) {
+    const value = req.query[name];
+    if (value !== undefined && (typeof value !== 'string' || !allowed.includes(value))) return res.status(400).json({ error: 'Filtru invalid.' });
+    if (value) filters[name] = value;
+  }
+  if (Object.keys(filters).length) return res.set('Cache-Control', 'public, max-age=300').json(verify.trackRecord(filters));
   if (Date.now() - trackCache.at > 300000) trackCache = { at: Date.now(), data: verify.trackRecord() };
   res.set('Cache-Control', 'public, max-age=300').json(trackCache.data);
+});
+
+app.get('/api/example', (req, res) => res.set('Cache-Control', 'public, max-age=3600').json(require('./lib/example').example(uiLang(req.query.lang))));
+
+app.get('/api/predict/:id/status', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const job = jobs.get(req.params.id);
+  const rec = store.get(req.params.id);
+  if (!job && !rec) return res.status(404).json({ error: t('notFound', uiLang(req.query.ui)) });
+  if (job?.req?.private || rec?.request.private) privacy.protectResponse(res);
+  res.json({ id: req.params.id, status: rec ? 'done' : job.status, createdAt: rec?.createdAt || job.createdAt,
+    ...(job?.status === 'error' ? { message: [...job.events].reverse().find(e => e.type === 'error')?.data.message || t('failed', uiLang(req.query.ui)) } : {}),
+  });
 });
 
 app.get('/api/recent', (req, res) => {
@@ -216,22 +309,6 @@ app.get('/api/recent', (req, res) => {
 // Pentru butonul „Statistici”: browserul are acces la statistici?
 app.get('/api/me', (req, res) => res.set('Cache-Control', 'no-store').json({ admin: !!adminauth.sessionEmail(req) }));
 
-// Accesul direct, după adresa de email scrisă în formular (fără link și fără parolă), cerut explicit de
-// proprietar. Limitat la 20 de verificări pe oră de la același IP, ca adresa să nu poată fi ghicită automat.
-const checks = new Map();
-function checkAllowed(req) {
-  const k = ipKey(req);
-  const now = Date.now();
-  const list = (checks.get(k) || []).filter((t) => now - t < 3600000);
-  if (list.length >= 20) return false;
-  checks.set(k, [...list, now]);
-  return true;
-}
-app.post('/api/admin/check', (req, res) => {
-  res.set('Cache-Control', 'no-store');
-  if (!checkAllowed(req)) return res.json({ admin: false });
-  res.json({ admin: adminauth.isAdminEmail(req.body?.email) });
-});
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // --- Interfața ---
@@ -244,10 +321,10 @@ app.get('/admin', admin.auth, admin.page);
 
 // Accesul la statistici fără parolă: linkul de unică folosință trimis pe email.
 const adminForm = express.urlencoded({ extended: false, limit: '2kb' });
-const ipKey = (req) => crypto.createHash('sha256').update(`nostra-admin:${req.ip}`).digest('base64url').slice(0, 16);
+const ipKey = adminauth.ipKey;
 app.post('/admin/link', adminForm, async (req, res) => {
   const email = String(req.body?.email || '').trim().slice(0, 254);
-  const token = adminauth.createLink(email);
+  const token = adminauth.allowLinkRequest(ipKey(req)) && adminauth.createLink(email);
   if (token) {
     try {
       await mail.sendAdminLink(email, `${seo.BASE_URL_FOR(req)}/admin/acces?t=${token}`, adminauth.LINK_MINUTES);
@@ -260,20 +337,14 @@ app.post('/admin/link', adminForm, async (req, res) => {
   admin.loginPage(res, 'Dacă adresa are acces la statistici, ți-am trimis un email cu linkul. Verifică și dosarul Spam.');
 });
 app.get('/admin/acces', (req, res) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  if (!adminauth.allowLinkRequest(ipKey(req))) return admin.loginPage(res.status(429), '', 'Prea multe încercări.');
   const email = adminauth.consumeLink(req.query.t);
   if (!email) return admin.loginPage(res.status(400), '', 'Linkul a expirat sau a fost deja folosit. Cere unul nou.');
   adminauth.setSession(res, email);
   events.log('admin', { what: 'acces-prin-email' });
   res.redirect(303, '/admin');
 });
-app.post('/admin/email-acces', adminForm, (req, res) => {
-  const email = String(req.body?.email || '').trim().toLowerCase();
-  if (!checkAllowed(req) || !adminauth.isAdminEmail(email)) return res.redirect(303, '/admin');
-  adminauth.setSession(res, email);
-  events.log('admin', { what: 'acces-prin-adresa' });
-  res.redirect(303, '/admin');
-});
-
 app.post('/admin/parola', adminForm, (req, res) => {
   const k = ipKey(req);
   if (!adminauth.passwordAllowed(k)) return admin.loginPage(res.status(429), '', 'Prea multe încercări. Încearcă din nou peste o oră.');
@@ -295,7 +366,9 @@ app.get('/og/:name.png', async (req, res) => {
   const rec = name === 'site' ? null : store.get(name);
   if (name !== 'site' && (!rec || rec.prediction.declined)) return res.status(404).end();
   try {
-    res.set('Cache-Control', 'public, max-age=86400').sendFile(await seo.ogImage(name, rec));
+    res.set('Cache-Control', 'public, max-age=86400');
+    if (rec?.request.private) privacy.protectResponse(res);
+    res.sendFile(await seo.ogImage(name, rec));
   } catch (e) {
     console.error('[og]', name, e.message);
     res.status(500).end();
@@ -318,10 +391,20 @@ app.use(express.static(PUBLIC, { index: false, maxAge: '1h' }));
 
 // Pagina e aceeași aplicație, dar cu titlul, descrierea și imaginea previziunii puse de server,
 // ca linkurile distribuite să arate previziunea, nu doar numele site-ului.
-const sendPage = (res, rec) => res.set('Cache-Control', 'no-cache').type('html').send(seo.renderPage(rec));
+const sendPage = (res, rec, privateJob = false) => {
+  res.set('Cache-Control', 'no-cache');
+  if (rec?.request.private || privateJob) privacy.protectResponse(res);
+  return res.type('html').send(seo.renderPage(rec));
+};
 app.get('/', (req, res) => sendPage(res, null));
-app.get('/p/:id', (req, res) => sendPage(res, store.get(req.params.id)));
-app.get('/pay/:id', (req, res) => res.set('X-Robots-Tag', 'noindex').type('html').set('Cache-Control', 'no-store').send(seo.renderPage(null)));
+app.get('/exemplu', (req, res) => res.set('X-Robots-Tag', 'noindex').type('html').send(seo.renderPage(null)));
+app.get('/p/:id', (req, res) => {
+  const rec = store.get(req.params.id);
+  const job = jobs.get(req.params.id);
+  if (!rec && !job) res.status(404).set('X-Robots-Tag', 'noindex');
+  sendPage(res, rec, job?.req.private);
+});
+app.get('/pay/:id', (req, res) => privacy.protectResponse(res).type('html').send(seo.renderPage(null)));
 app.use((req, res) => res.status(404).type('html').send(seo.renderPage(null)));
 
 app.use((err, req, res, next) => {
@@ -336,6 +419,7 @@ if (require.main === module) {
   if (process.env.DEMO_MODE !== '1' && !process.env.ANTHROPIC_API_KEY) {
     console.warn('ATENȚIE: ANTHROPIC_API_KEY lipsește din .env — previziunile vor eșua. (Pentru probe: DEMO_MODE=1)');
   }
+  jobs.recover(orders.finishRecoveredJob);
   verify.start();
   orders.startReconciler();
   if (payments.mode() !== 'off') console.log(`Plăți: ${payments.mode()} (${payments.priceLabel()} / previziune)`);

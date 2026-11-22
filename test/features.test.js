@@ -29,9 +29,9 @@ test.after(() => {
   fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
 });
 
-const post = (body) => fetch(`${base}/api/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const post = (body) => fetch(`${base}/api/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'reader@example.com', ...body }) });
 const finish = async (id) => { await (await fetch(`${base}/api/predict/${id}/events`)).text(); };
-const Q = { domain: 'sport', horizon: '1w', region: 'global', lang: 'ro' };
+const Q = { private: false, domain: 'sport', horizon: '1w', region: 'global', lang: 'ro' };
 
 test('o previziune privată nu apare public și nu împarte cache-ul cu cea publică', async () => {
   const priv = await (await post({ ...Q, question: 'Cine câștigă derby-ul?', private: true })).json();

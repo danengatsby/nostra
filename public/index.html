@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/style.css">
+  <script src="/client-state.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -27,16 +28,28 @@
   </header>
 
   <main>
+    <div id="network-warning" class="network-warning" role="status" hidden>
+      <p id="network-message"></p>
+      <button id="retry-connection" class="btn-small" type="button" data-i18n="retryConnection">Reîncearcă legătura</button>
+    </div>
     <!-- Formular -->
     <section id="view-form" class="view">
       <form id="form" class="card" novalidate>
+        <div class="example-intro">
+          <p data-i18n="exampleIntro">Vezi ce conține o previziune înainte să comanzi.</p>
+          <a class="btn-small" href="/exemplu" data-nav data-i18n="viewExample">Vezi un exemplu complet</a>
+        </div>
         <fieldset>
           <legend><span class="step">1</span> <span data-i18n="stepDomain">Domeniul</span></legend>
           <div id="domains" class="chips" role="radiogroup" data-i18n-aria="stepDomain" aria-label="Domeniul"></div>
+          <label id="other-domains" class="field" hidden>
+            <span data-i18n="otherDomains">Alege un domeniu sau scrie propria întrebare</span>
+            <select id="other-domain"></select>
+          </label>
         </fieldset>
 
         <fieldset>
-          <legend><span class="step">2</span> <span data-i18n="stepQuestion">Întrebarea ta</span> <span class="optional" data-i18n="optional">(opțional)</span></legend>
+          <legend><span class="step">2</span> <label for="question" data-i18n="stepQuestion">Întrebarea ta</label> <span class="optional" data-i18n="optional">(opțional)</span></legend>
           <textarea id="question" name="question" rows="3" maxlength="500" data-i18n-ph="questionPh"
             placeholder="Ex.: Va scădea inflația din România sub 5% până la finalul perioadei?"></textarea>
           <div class="question-meta">
@@ -44,6 +57,10 @@
             <span id="qcount" class="count">0/500</span>
           </div>
           <p class="hint" data-i18n="questionHint">Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.</p>
+          <div class="draft-tools">
+            <span id="draft-status" class="hint" role="status"></span>
+            <button id="reset-form" class="btn-small" type="button" hidden data-i18n="clearDraft">Golește formularul</button>
+          </div>
         </fieldset>
 
         <fieldset>
@@ -51,53 +68,83 @@
           <div id="horizons" class="segmented" role="radiogroup" data-i18n-aria="stepHorizon" aria-label="Perioada"></div>
         </fieldset>
 
-        <div class="row">
-          <label class="field">
-            <span data-i18n="region">Regiunea</span>
-            <select id="region" name="region"></select>
-          </label>
-          <label class="field">
-            <span data-i18n="answerLang">Limba răspunsului</span>
-            <select id="lang" name="lang">
-              <option value="ro">Română</option>
-              <option value="en">English</option>
-            </select>
-          </label>
-        </div>
+        <label class="field region-field">
+          <span data-i18n="region">Regiunea</span>
+          <select id="region" name="region"></select>
+        </label>
 
         <label class="check-row">
-          <input type="checkbox" id="private" name="private">
+          <input type="checkbox" id="private" name="private" checked>
           <span><strong data-i18n="private">Previziune privată</strong>
-            <span class="muted" data-i18n="privateHint">Nu apare în lista publică și nu e indexată de motoarele de căutare. O vede doar cine are linkul.</span></span>
+            <span class="muted" id="visibility-status" aria-live="polite">Nu apare în lista publică și nu e indexată de motoarele de căutare. O vede doar cine are linkul.</span></span>
         </label>
 
-        <fieldset class="effort-field">
-          <legend><span data-i18n="effort">Efortul oracolului</span></legend>
-          <div id="efforts" class="segmented" role="radiogroup" data-i18n-aria="effort" aria-label="Efortul oracolului"></div>
-          <p id="effort-hint" class="hint"></p>
-        </fieldset>
+        <details id="advanced-options" class="advanced-options">
+          <summary>
+            <span data-i18n="advancedOptions">Opțiuni avansate</span>
+            <span id="advanced-summary" class="advanced-summary"></span>
+          </summary>
+          <div class="advanced-content">
+            <fieldset class="effort-field">
+              <legend><span data-i18n="effort">Efortul oracolului</span></legend>
+              <div id="efforts" class="segmented" role="radiogroup" data-i18n-aria="effort" aria-label="Efortul oracolului"></div>
+              <p id="effort-hint" class="hint"></p>
+            </fieldset>
+            <label class="field">
+              <span data-i18n="answerLang">Limba răspunsului</span>
+              <select id="lang" name="lang">
+                <option value="ro">Română</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+          </div>
+        </details>
 
-        <label id="email-row" class="field email-field" hidden>
-          <span data-i18n="emailLabel">Adresa de email la care primești previziunea</span>
+        <label id="email-row" class="field email-field">
+          <span id="email-label">Email (obligatoriu și pentru afișarea gratuită)</span>
           <input type="email" id="email" name="email" autocomplete="email" inputmode="email" maxlength="254"
-            data-i18n-ph="emailPh" placeholder="nume@exemplu.ro">
-        </label>
-        <button id="stats-inline" class="btn-small stats-inline" type="button" hidden data-i18n="stats">📊 Statistici</button>
-
-        <label id="consent-row" class="check-row" hidden>
-          <input type="checkbox" id="consent" name="consent">
-          <span><span data-i18n="consent">Sunt de acord cu Termenii și confidențialitatea și cer furnizarea imediată a previziunii; înțeleg că, odată furnizată, nu mai pot cere retragerea din contract.</span>
-            <a href="/termeni" target="_blank" rel="noopener" data-i18n="readTerms">Citește termenii</a></span>
+            data-i18n-ph="emailPh" placeholder="nume@exemplu.ro" required>
         </label>
 
         <p id="form-error" class="error" role="alert" hidden></p>
-        <button id="submit" class="btn-primary" type="submit" data-i18n="submit">Consultă oracolul</button>
-        <p id="pay-hint" class="hint center" hidden></p>
+        <div class="forecast-actions">
+          <button id="submit" class="btn-primary" type="submit" data-i18n="submit">Vezi gratuit previziunea</button>
+        </div>
+        <details id="email-options" class="payment-info" hidden>
+          <summary data-i18n="deliveryOption">Trimitere pe email</summary>
+          <p id="pay-hint" class="hint" hidden></p>
+          <label id="consent-row" class="check-row" hidden>
+            <input type="checkbox" id="consent" name="consent">
+            <span><span data-i18n="consent">Sunt de acord cu Termenii și confidențialitatea și cer trimiterea imediată pe email; înțeleg că, după furnizarea serviciului plătit, nu mai pot cere retragerea din contract.</span>
+              <a href="/termeni" target="_blank" rel="noopener" data-i18n="readTerms">Citește termenii</a></span>
+          </label>
+          <p id="email-error" class="error" role="alert" hidden></p>
+          <button id="submit-email" class="btn-primary" type="button" hidden>Continuă către plată</button>
+        </details>
+        <p class="hint center" data-i18n="freeHint">Raportul complet pe ecran, fără plată.</p>
         <p class="hint center" data-i18n="duration">Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.</p>
       </form>
 
+      <section class="personal" aria-labelledby="personal-title">
+        <h2 id="personal-title" data-i18n="personalTitle">Istoricul meu</h2>
+        <p class="hint" data-i18n="personalHint">Salvat în acest browser. Întrebările urmărite se actualizează când revii în aplicație.</p>
+        <div class="personal-tools" role="group" aria-label="Filtre istoric" data-i18n-aria="personalTitle">
+          <button id="library-all" class="btn-small" type="button" aria-pressed="true" data-i18n="historyAll">Toate</button>
+          <button id="library-watched" class="btn-small" type="button" aria-pressed="false" data-i18n="historyWatched">Întrebări urmărite</button>
+          <button id="library-refresh" class="btn-small" type="button" data-i18n="refreshChecks">Actualizează rezultatele</button>
+        </div>
+        <p id="library-status" class="hint" role="status"></p>
+        <ul id="personal-list" class="personal-list"></ul>
+        <p id="personal-empty" class="muted" data-i18n="personalEmpty">Previziunile pe care le consulți vor apărea aici.</p>
+      </section>
+
       <section class="track" aria-labelledby="track-title">
         <h2 id="track-title" data-i18n="trackTitle">Palmaresul oracolului</h2>
+        <div class="track-filters">
+          <label class="field"><span data-i18n="stepDomain">Domeniul</span><select id="track-domain"></select></label>
+          <label class="field"><span data-i18n="stepHorizon">Perioada</span><select id="track-horizon"></select></label>
+          <label class="field"><span data-i18n="modelFilter">Modelul</span><select id="track-tier"></select></label>
+        </div>
         <div id="track" class="card"><p class="muted" data-i18n="loading">Se încarcă…</p></div>
       </section>
 
@@ -122,18 +169,57 @@
       </div>
     </section>
 
+    <section id="view-order" class="view" hidden>
+      <div class="card order-card">
+        <h1 id="order-title"></h1>
+        <p id="order-message" role="status"></p>
+        <p id="order-connection" class="hint" role="status" hidden></p>
+        <a id="order-report" class="btn-primary" data-nav hidden data-i18n="openForecast">Deschide previziunea</a>
+        <button type="button" id="order-refresh" class="btn-ghost" hidden data-i18n="checkOrder">Reverifică starea comenzii</button>
+        <a id="order-contact" href="/termeni" hidden data-i18n="contact">Contact</a>
+      </div>
+    </section>
+
     <!-- Rezultat -->
     <section id="view-result" class="view" hidden>
       <article id="result" class="result"></article>
-      <div class="result-actions">
-        <button id="share" class="btn-ghost" type="button" hidden data-i18n="share">Distribuie</button>
-        <a id="share-wa" class="btn-ghost share" target="_blank" rel="noopener noreferrer">WhatsApp</a>
-        <a id="share-fb" class="btn-ghost share" target="_blank" rel="noopener noreferrer">Facebook</a>
-        <a id="share-x" class="btn-ghost share" target="_blank" rel="noopener noreferrer">X</a>
-        <a id="share-tg" class="btn-ghost share" target="_blank" rel="noopener noreferrer">Telegram</a>
-        <button id="copy-link" class="btn-ghost" type="button" data-i18n="copyLink">Copiază linkul</button>
+      <div id="result-tools" class="card result-tools">
+       <a id="delivery-status-link" class="btn-ghost" data-nav hidden data-i18n="orderLink">Vezi starea livrării</a>
+       <button id="email-result" class="btn-primary" type="button" hidden aria-expanded="false" aria-controls="result-email-options">Trimite pe email — 1 €</button>
+       <div id="result-email-options" class="email-options" hidden>
+         <p id="result-email-label" class="delivery-fee">Comision de trimitere pe email: 1 €.</p>
+         <form id="result-email-form" class="detail-content" novalidate>
+           <p class="hint" data-i18n="emailExistingHint">Primești linkul acestei previziuni. Nu generăm alt rezultat și nu schimbăm analiza.</p>
+           <label class="field email-field">
+             <span data-i18n="emailLabel">Adresa de email la care primești previziunea</span>
+             <input type="email" id="result-email" autocomplete="email" inputmode="email" maxlength="254" data-i18n-ph="emailPh" placeholder="nume@exemplu.ro">
+           </label>
+           <label class="check-row">
+             <input type="checkbox" id="result-consent">
+             <span><span data-i18n="consent">Sunt de acord cu termenii și cer trimiterea imediată pe email.</span>
+               <a href="/termeni" target="_blank" rel="noopener" data-i18n="readTerms">Citește termenii</a></span>
+           </label>
+           <p id="result-email-error" class="error" role="alert" hidden></p>
+           <button id="result-submit-email" class="btn-primary" type="submit">Continuă către plată — 1 €</button>
+         </form>
+       </div>
+       <div class="result-actions">
+        <button id="watch-result" class="btn-ghost" type="button" aria-describedby="watch-hint" data-i18n="watchQuestion">Urmărește întrebarea</button>
+        <details id="share-options">
+          <summary class="btn-ghost" data-i18n="share">Distribuie</summary>
+          <div class="result-actions">
+            <button id="share" class="btn-ghost" type="button" hidden data-i18n="systemShare">Alte opțiuni</button>
+            <a id="share-wa" class="btn-ghost share" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+            <a id="share-fb" class="btn-ghost share" target="_blank" rel="noopener noreferrer">Facebook</a>
+            <a id="share-x" class="btn-ghost share" target="_blank" rel="noopener noreferrer">X</a>
+            <a id="share-tg" class="btn-ghost share" target="_blank" rel="noopener noreferrer">Telegram</a>
+            <button id="copy-link" class="btn-ghost" type="button" data-i18n="copyLink">Copiază linkul</button>
+          </div>
+        </details>
         <button id="print" class="btn-ghost" type="button" data-i18n="pdf">Salvează PDF</button>
         <a class="btn-ghost" href="/" data-nav data-i18n="newForecast">O nouă previziune</a>
+       </div>
+       <p id="watch-hint" class="hint" data-i18n="watchHint">Urmărirea este salvată în acest browser. Verificăm actualizările când revii; nu trimitem notificări și nu generăm previziuni noi automat.</p>
       </div>
     </section>
 
@@ -148,7 +234,7 @@
   </main>
 
   <footer class="site-footer">
-    <p class="legal-links"><a href="/termeni" data-i18n="termsLink">Termeni și confidențialitate</a> · <a id="contact-link" href="/termeni" data-i18n="contact">Contact</a> · <a href="https://anpc.ro/" rel="noopener" target="_blank">ANPC</a> · <a href="https://anpc.ro/ce-este-sal/" rel="noopener" target="_blank">ANPC – SAL</a></p>
+    <p class="legal-links"><a id="astro-switch" href="https://astrohor.fun/">Astrohoroscop</a> · <a href="/termeni" data-i18n="termsLink">Termeni și confidențialitate</a> · <a id="contact-link" href="/termeni" data-i18n="contact">Contact</a> · <a href="https://anpc.ro/" rel="noopener" target="_blank">ANPC</a> · <a href="https://anpc.ro/ce-este-sal/" rel="noopener" target="_blank">ANPC – SAL</a></p>
     <p data-i18n="disclaimer">Previziunile sunt estimări probabilistice generate automat de inteligență artificială pe baza surselor publice găsite la momentul cererii. Nu sunt certitudini și nu reprezintă consultanță financiară, medicală sau juridică.</p>
   </footer>
   <div id="toast" class="toast" role="status" hidden></div>

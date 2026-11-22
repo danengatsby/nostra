@@ -40,7 +40,9 @@ function client(behavior, seen = []) {
         if (behavior === 'error') throw Object.assign(new Error('overloaded'), { status: 529 });
         if (behavior === 'main-error' && params.model !== 'claude-haiku-5-5') throw Object.assign(new Error('overloaded'), { status: 529 });
         if (behavior === 'refusal') return { stop_reason: 'refusal', usage: { output_tokens: 50 }, content: [] };
-        const p = { title: 'T', summary: 'S', predictions: [{ claim: 'C', probability: 60, resolve_by: '2027-01-15' }] };
+        const p = require('../lib/example').example().prediction;
+        p.predictions[0].resolve_by = '2027-01-15';
+        em.emit('contentBlock', { type: 'web_search_tool_result', content: p.sources.map(s => ({ ...s, type: 'web_search_result' })) });
         return { stop_reason: 'end_turn', usage: { input_tokens: 1000, output_tokens: 10000, server_tool_use: { web_search_requests: 10 } }, content: [{ type: 'text', text: `<prediction>${JSON.stringify(p)}</prediction>` }] };
       };
       return em;
@@ -112,7 +114,7 @@ test('bugetul zilnic oprește previziunile noi, dar nu și cache-ul', async () =
   assert.throws(() => jobs.submit({ ...REQ, question: 'A cincea?' }, '10.0.0.9'), /odihnit pentru azi/);
 
   // O întrebare deja calculată se servește în continuare, fără cost.
-  assert.deepEqual(jobs.submit({ ...REQ, question: 'prima' }, '10.0.0.6'), { id: first.id, cached: true });
+  assert.deepEqual(jobs.submit({ ...REQ, question: 'prima?' }, '10.0.0.6'), { id: first.id, cached: true });
 
   // Registrul e salvat pe disc (rezistă la repornire).
   const saved = JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR, 'budget.json'), 'utf8'));
@@ -145,4 +147,27 @@ test('dacă modelul principal dă eroare, previziunea se face cu modelul de reze
   assert.deepEqual(seen, ['claude-opus-5-5', 'claude-haiku-5-5']);
   assert.ok(events.includes('fallback'), 'vizitatorul vede că oracolul trece pe modelul rapid');
   assert.equal(store.get(id).meta.tier, 'lite');
+});
+
+test('plafonul zilnic include ambele modele, iar checkouturile au limită proprie', () => {
+  const original = jobs.cfg.perDay;
+  jobs.cfg.perDay = 1;
+  try {
+    assert.throws(() => jobs.precheck('audit-daily', 'ro'), /odihnit/);
+    jobs.reserveCheckout('audit-checkout', 'ro');
+    assert.throws(() => jobs.reserveCheckout('audit-checkout', 'ro'), jobs.LimitError);
+  } finally { jobs.cfg.perDay = original; }
+});
+
+test('o generare plătită simultană primește propria lucrare principală', async () => {
+  process.env.DEMO_MODE = '1';
+  process.env.DEMO_STEP_MS = '2';
+  cost.record(1, 'failed');
+  process.env.FALLBACK_DAILY_USD = '5';
+  const req = { ...REQ, question: 'Două tipuri de generare' };
+  const free = jobs.submit(req, 'audit-lite');
+  const paid = jobs.submit(req, null, 'ro', { paid: true });
+  assert.notEqual(free.id, paid.id);
+  assert.deepEqual([jobs.get(free.id).tier, jobs.get(paid.id).tier], ['lite', 'main']);
+  await Promise.all([settle(free.id), settle(paid.id)]);
 });

@@ -8,16 +8,16 @@ const { EventEmitter } = require('node:events');
 
 delete process.env.DEMO_MODE;
 const oracle = require('../lib/oracle');
-const { sanitizePrediction, extractJson } = require('../lib/schema');
+const { sanitizePrediction, extractJson, PREDICTION_SCHEMA } = require('../lib/schema');
 
 const VALID = {
   declined: false, declined_reason: '', title: 'Titlu', summary: 'Rezumat.', current_state: 'Acum.', confidence: 'medium',
   scenarios: [
     { name: 'Bază', probability: 60, description: 'd', signals: ['s'] },
     { name: 'Optimist', probability: 30, description: 'd', signals: [] },
-    { name: 'Pesimist', probability: 30, description: 'd', signals: [] },
+    { name: 'Pesimist', probability: 10, description: 'd', signals: [] },
   ],
-  predictions: [{ claim: 'Ceva se întâmplă', probability: 100, timeframe: '2027', confidence: 'high', rationale: 'r' }],
+  predictions: Array.from({ length: 4 }, (_, i) => ({ claim: 'Afirmație ' + i, probability: 99, timeframe: '2027', resolve_by: '2027-01-15', resolution_criteria: 'Conform raportului publicat', confidence: 'high', rationale: 'r' })),
   drivers: [{ name: 'F', impact: 'positive', explanation: 'e' }],
   watch: [{ indicator: 'I', when: 'mai' }], wildcards: ['W'], quatrain: 'a\nb\nc\nd',
   sources: [
@@ -37,6 +37,7 @@ function fakeClient(responses, calls) {
           const msg = responses.shift();
           const em = new EventEmitter();
           em.finalMessage = async () => {
+            if (!msg.content.some(b => b.type === 'web_search_tool_result')) em.emit('contentBlock', { type: 'web_search_tool_result', content: [{ type: 'web_search_result', url: 'https://real.example/a' }] });
             for (const b of msg.content) {
               if (b.type === 'text') em.emit('text', b.text);
               em.emit('contentBlock', b);
@@ -57,6 +58,23 @@ function fakeClient(responses, calls) {
 }
 
 const REQ = { domain: 'economie', horizon: '1y', region: 'ro', lang: 'ro', question: 'Inflația?' };
+
+test('sursele pe afirmații sunt filtrate separat și păstrează datele de publicare disponibile', async () => {
+  const p = { ...VALID, predictions: [
+    { ...VALID.predictions[0], sources: [{ title: 'Real', url: 'https://real.example/a', published_at: '2026-01-01' }, { title: 'Inventat', url: 'https://invented.example/x' }] },
+    ...VALID.predictions.slice(1),
+  ] };
+  oracle._setClient(fakeClient([{ stop_reason: 'end_turn', usage: {}, content: [
+    { type: 'web_search_tool_result', content: [{ type: 'web_search_result', url: 'https://real.example/a', title: 'Real', page_age: '2026-02-01' }] },
+    { type: 'text', text: `<prediction>${JSON.stringify(p)}</prediction>` },
+  ] }], []));
+  const { prediction } = await oracle.runOracle(REQ, () => {});
+  assert.deepEqual(prediction.predictions[0].sources.map(s => s.url), ['https://real.example/a']);
+  assert.equal(prediction.predictions[0].sources[0].published_at, '2026-02-01');
+  assert.deepEqual(prediction.predictions[1].sources, [], 'sursele generale nu sunt atribuite automat unei afirmații');
+  const undated = sanitizePrediction({ ...VALID, sources: [{ url: 'https://real.example/a', title: 'T', published_at: '2026-02-30' }] });
+  assert.equal(undated.sources[0].published_at, '');
+});
 
 test('reia după pause_turn, păstrează doar sursele consultate', async () => {
   const calls = [];
@@ -128,6 +146,16 @@ test('extractJson și sanitizePrediction', () => {
   assert.deepEqual(p.sources.map((s) => s.url), ['https://real.example/a', 'https://invented.example/x']);
 });
 
+test('criteriile de rezolvare se păstrează, sunt limitate și rămân opționale pentru previziunile vechi', () => {
+  const criteria = 'Adevărat numai dacă INS raportează o rată anuală strict sub 5% în decembrie 2027.';
+  const p = sanitizePrediction({ ...VALID, predictions: [{ ...VALID.predictions[0], resolution_criteria: criteria }] });
+  assert.equal(p.predictions[0].resolution_criteria, criteria);
+  assert.equal(sanitizePrediction({ ...VALID, predictions: [{ claim: 'Vechi' }] }).predictions[0].resolution_criteria, '');
+  const long = sanitizePrediction({ ...VALID, predictions: [{ ...VALID.predictions[0], resolution_criteria: 'x'.repeat(1200) }] });
+  assert.equal(long.predictions[0].resolution_criteria.length, 1000);
+  assert.ok(PREDICTION_SCHEMA.properties.predictions.items.required.includes('resolution_criteria'));
+});
+
 test('mesajul către model conține data-țintă corectă', () => {
   const msg = oracle.buildUserMessage({ ...REQ, question: '' }, new Date('2026-11-17T10:00:00Z'));
   assert.match(msg, /from 2026-11-17 to 2027-11-17/);
@@ -189,4 +217,13 @@ test('modelul de rezervă: Haiku 5.5, căutarea de bază, fără `fallbacks`, cu
   assert.equal(p.betas, undefined);
   assert.match(p.messages[0].content, /search for those before you answer/);
   assert.deepEqual([meta.tier, meta.model], ['lite', 'claude-haiku-5-5']);
+});
+
+test('un rezultat incomplet nu poate fi publicat nici după reparație', async () => {
+  const invalid = { title: 'T', summary: 'S', predictions: [{ claim: 'A' }], scenarios: [{ name: 'S', probability: 99 }] };
+  const calls = [];
+  const fake = fakeClient([{stop_reason: 'end_turn', content: [{type:'text', text: JSON.stringify(invalid)}]}], calls);
+  fake.messages.create = async () => ({ content: [{type:'text', text: JSON.stringify(invalid)}] });
+  oracle._setClient(fake);
+  await assert.rejects(oracle.runOracle(REQ, () => {}), /Scenarii incomplete/);
 });

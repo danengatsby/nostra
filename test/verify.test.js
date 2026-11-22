@@ -68,11 +68,13 @@ test('verificarea marchează afirmațiile și păstrează doar surse găsite efe
     { claim: 'Inflația peste 6%', probability: 87, resolve_by: '2027-03-13' },
     { claim: 'Dobânda rămâne 6,5%', probability: 85, resolve_by: '2027-03-13' },
     { claim: 'Inflația sub 5%', probability: 20, resolve_by: '2027-03-13' },
+    { claim: 'Inflația sub 6%', probability: 85, resolve_by: '2027-03-13' },
   ]);
   oracle._setClient(client([
     { id: 0, status: 'true', evidence: 'INS: 6,8% în februarie 2027.', url: 'https://insse.ro/ipc-feb-2027' },
     { id: 1, status: 'false', evidence: 'BNR a redus dobânda la 6,25%.', url: 'https://inventat.example/x' },
     { id: 2, status: 'bizar' },
+    { id: 3, status: 'false', evidence: 'INS: 6,8% în februarie 2027.', url: 'https://insse.ro/ipc-feb-2027' },
   ], calls));
 
   const usd = await verify.verifyRecord(rec, NOW);
@@ -81,20 +83,20 @@ test('verificarea marchează afirmațiile și păstrează doar surse găsite efe
   assert.match(calls[0].messages[0].content, /<claim id="1">\nDobânda rămâne 6,5%/);
 
   const saved = store.get('verificare01');
-  const [a, b, c] = saved.verification.items;
-  assert.deepEqual([a.status, b.status, c.status], ['true', 'false', 'unresolved']);
+  const [a, b, c, d] = saved.verification.items;
+  assert.deepEqual([a.status, b.status, c.status, d.status], ['true', 'unresolved', 'unresolved', 'false']);
   assert.equal(a.url, 'https://insse.ro/ipc-feb-2027');
   assert.equal(b.url, null, 'URL-ul inventat nu se păstrează');
   assert.equal(cost.status().verifications, 1);
 
-  // Cele verificate nu mai sunt scadente; cea nelămurită revine după o săptămână.
+  // Cele verificate cu dovezi nu mai sunt scadente; cele nelămurite revin după o săptămână.
   assert.deepEqual(verify.dueClaims(saved, NOW + DAY), []);
-  assert.deepEqual(verify.dueClaims(saved, NOW + 8 * DAY), [2]);
+  assert.deepEqual(verify.dueClaims(saved, NOW + 8 * DAY), [1, 2]);
 });
 
 test('palmaresul: procent corect, Brier și calibrare (p < 50% se întoarce)', () => {
   const tr = verify.trackRecord();
-  // 87% adevărată → corect; 85% falsă → greșit; 20% nelămurită → în așteptare (+ celelalte din testul 1).
+  // 87% adevărată → corect; 85% falsă cu sursă → greșit; verdictul fără sursă nu intră în scor.
   assert.equal(tr.resolved, 2);
   assert.equal(tr.correct, 1);
   assert.equal(tr.brier, Math.round((((0.87 - 1) ** 2 + (0.85 - 0) ** 2) / 2) * 1000) / 1000);
@@ -112,4 +114,15 @@ test('trecerea verificatorului respectă cota zilnică a verificărilor', async 
   const { checked } = await verify.runOnce(NOW);
   assert.ok(checked >= 1 && checked < 5, `verificate: ${checked}`);
   assert.ok(cost.status().verifySpentUsd <= 0.25 + 0.0001);
+});
+
+test('termenul afișat în istoric respectă zilele de grație și limita de reverificări', () => {
+  const { nextCheckTime } = require('../lib/verify');
+  const rec = { createdAt: '2026-01-01T00:00:00Z', request: { horizon: '1m' } };
+  const claim = { resolve_by: '2026-02-01' };
+  const check = { status: 'unresolved', checkedAt: '2026-02-04T12:00:00Z', attempts: 1 };
+  assert.equal(nextCheckTime(rec, claim), Date.parse('2026-02-03T00:00:00Z'));
+  assert.equal(nextCheckTime(rec, claim, check), Date.parse('2026-02-11T12:00:00Z'));
+  assert.equal(nextCheckTime(rec, claim, { ...check, attempts: 4 }), null);
+  assert.equal(nextCheckTime(rec, claim, { ...check, status: 'true', evidence: 'Confirmat', url: 'https://example.org/date' }), null);
 });

@@ -26,7 +26,7 @@ test.after(() => {
   fs.rmSync(process.env.DATA_DIR, { recursive: true, force: true });
 });
 
-const post = (body) => fetch(`${base}/api/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const post = (body) => fetch(`${base}/api/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'reader@example.com', ...body }) });
 
 async function readEvents(id) {
   const res = await fetch(`${base}/api/predict/${id}/events`);
@@ -36,7 +36,7 @@ async function readEvents(id) {
 }
 
 test('o previziune completă, apoi servită din cache', async () => {
-  const body = { domain: 'piete', horizon: '1m', region: 'ro', lang: 'ro', question: 'Unde va fi cursul EUR/RON?' };
+  const body = { private: false, domain: 'piete', horizon: '1m', region: 'ro', lang: 'ro', question: 'Unde va fi cursul EUR/RON?' };
   const res = await post(body);
   assert.equal(res.status, 200);
   const { id, cached } = await res.json();
@@ -56,7 +56,7 @@ test('o previziune completă, apoi servită din cache', async () => {
   assert.deepEqual((await readEvents(id)).map(([t]) => t), ['done']);
 
   // Aceeași întrebare (altfel scrisă) → același rezultat, fără un nou apel.
-  const again = await (await post({ ...body, question: '  unde va fi CURSUL eur/ron ' })).json();
+  const again = await (await post({ ...body, question: '  unde va fi CURSUL eur/ron? ' })).json();
   assert.deepEqual([again.id, again.cached], [id, true]);
   assert.ok(again.etaSec >= 15);
 
@@ -77,7 +77,7 @@ test('validarea cererii', async () => {
 });
 
 test('previzualizarea linkului: etichete și imagine proprii previziunii', async () => {
-  const body = { domain: 'clima', horizon: '6m', region: 'eu', lang: 'ro', question: 'Iarnă <b>caldă</b>?' };
+  const body = { private: false, domain: 'clima', horizon: '6m', region: 'eu', lang: 'ro', question: 'Iarnă <b>caldă</b>?' };
   const { id } = await (await post(body)).json();
   await readEvents(id);
 
@@ -118,7 +118,7 @@ test('limita pe oră per vizitator', async () => {
 test('pagini și antete de securitate', async () => {
   for (const p of ['/', '/p/abcdefgh123']) {
     const res = await fetch(base + p);
-    assert.equal(res.status, 200);
+    assert.equal(res.status, p === '/' ? 200 : 404);
     assert.match(res.headers.get('content-security-policy'), /script-src 'self'/);
     assert.match(await res.text(), /Nostradamus/);
   }
@@ -148,4 +148,10 @@ test('scriptul și stilurile au versiune în adresă (fără cache vechi după a
   const js = await fetch(`${base}/app.js?v=${v}`);
   assert.equal(js.status, 200);
   assert.match(await js.text(), /renderEffortHint/);
+});
+
+test('catalogul acceptă exclusiv domenii și orizonturi proprii', async () => {
+  for (const overrides of [{ domain: 'constructor' }, { horizon: '__proto__' }]) {
+    assert.equal((await post({ domain: 'sport', horizon: '1m', ...overrides })).status, 400);
+  }
 });

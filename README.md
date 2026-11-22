@@ -18,14 +18,49 @@ După data fiecărei afirmații, oracolul **își verifică singur previziunile*
 marchează afirmația ca adevărată, falsă sau încă nelămurită, cu dovada și sursa. Prima pagină arată palmaresul:
 procentul de previziuni corecte, scorul Brier și calibrarea (dintre afirmațiile date cu 70–79%, câte s-au adeverit).
 
-**Plata:** cu `STRIPE_SECRET_KEY` în `.env`, butonul „Consultă oracolul — 1 €” duce vizitatorul pe pagina de
-plată Stripe, iar previziunea pornește doar după ce plata e confirmată. Dacă oracolul nu poate face previziunea
-(eroare) sau refuză întrebarea, banii se returnează automat. Fără cheie, previziunile sunt gratuite.
+**Gratuit pe ecran:** butonul „Vezi gratuit previziunea” generează raportul complet fără
+acord de livrare sau plată, inclusiv când Stripe este configurat. Implicit, o adresă de email validă este obligatorie
+și pentru afișarea gratuită; se validează fără a fi salvată pe server sau transmisă modelului. Se aplică limitele de cereri și buget.
+
+**Email opțional:** cu `STRIPE_SECRET_KEY` în `.env`, o secțiune separată permite generarea și trimiterea
+linkului pe email pentru 1 €. Acordul pentru livrare este cerut doar pentru această opțiune. Dintr-un rezultat
+citit gratuit se poate cumpăra trimiterea exact a acelui link, fără un nou apel AI, inclusiv dacă bugetul
+de generare s-a epuizat. Plata, livrarea și recuperarea după restart folosesc comenzile persistente existente.
+Erorile de generare, refuzul sau dispariția rezultatului înainte de livrare declanșează restituirea automată.
+Fără configurarea plăților, opțiunea pe email este ascunsă.
 
 Mai are: interfață în română și engleză, previziuni **private** (în afara listelor publice și a indexării),
 istoricul aceleiași întrebări puse la momente diferite (cum s-a schimbat probabilitatea scenariului de bază),
 timp estimat și notificare în browser când previziunea e gata, distribuire (WhatsApp, Facebook, X, Telegram),
 export PDF (tipărire) și instalare ca aplicație pe telefon sau calculator (PWA).
+
+Cache-ul și lucrările private sunt separate pe sesiune printr-un cookie HttpOnly (Secure pe HTTPS),
+fără a folosi IP-ul sau emailul ca identificator. Fără cookie, cererile private primesc spații separate.
+Identificatorul intern nu este expus în API; comenzile plătite îl păstrează pe disc pentru recuperare după
+restart. Previziunile private vechi nu se reutilizează în noul cache. Linkurile rămân accesibile oricui le
+primește. Paginile, API-ul, progresul SSE și imaginile private trimit `Cache-Control: private, no-store`;
+service worker-ul exclude paginile previziunilor și răspunsurile care interzic stocarea.
+
+Formularul are opțiunile de efort și limbă într-o secțiune pliabilă. Un exemplu complet, bilingv și marcat
+ca fictiv poate fi consultat gratuit la `/exemplu`, fără apel AI și fără comandă. Formularul se salvează
+automat în `sessionStorage`, fără acordul bifat; rămâne disponibil la reîncărcare și după revenirea de la plată.
+La pierderea conexiunii apare un mesaj explicit, iar progresul se recuperează prin SSE și verificarea stării.
+
+Formularul începe cu exemplul complet, apoi prezintă grila de domenii, întrebarea și perioada. „Alt domeniu” include categoriile suplimentare. Regiunea se alege sub perioadă, iar efortul și limba se aleg din „Opțiuni avansate”. După plată, linkul comenzii afișează
+confirmarea, starea livrării actualizată automat și accesul la previziune. Raportul prezintă
+afirmațiile imediat după rezumat și acțiunile la final. Trimiterile
+numerotate leagă afirmațiile de sursele lor; sursele generale fără asociere sunt marcate ca informații de
+context. Istoricul etichetează probabilitatea scenariului de bază și păstrează numele acestuia când e disponibil.
+
+„Istoricul meu” păstrează până la 100 de previziuni în browser (`localStorage`), cu ștergere individuală.
+Întrebările urmărite își actualizează verificările când utilizatorul revine pe prima pagină sau cere o
+actualizare; pentru cele publice se preia și ultima versiune din istoric. Nu se generează automat previziuni
+noi și nu se fac plăți pentru urmărire. Lista arată următorul termen eligibil și câte verdicte finale au apărut după ultima deschidere. Nu există sincronizare între dispozitive.
+
+Afirmațiile noi au surse proprii, filtrate după URL-urile primite de la instrumente. Datele de publicare
+disponibile sunt afișate; lipsa datei sau a surselor pe afirmație este indicată explicit. Rezultatele vechi
+nu primesc automat surse generale ca și cum ar susține fiecare afirmație. Palmaresul permite filtre combinate
+după domeniu, perioadă și model principal/rapid și arată numărul afirmațiilor rezolvate.
 
 ## Pornire rapidă
 
@@ -48,22 +83,31 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
 - **Modelul rapid de rezervă** – când bugetul principal de azi s-a epuizat, previziunile noi se fac cu Claude Haiku 5.5
   (căutare web de bază, cel mult `FALLBACK_MAX_SEARCHES` căutări), din bugetul separat `FALLBACK_DAILY_USD`; tot el
   preia o previziune când modelul principal dă eroare. Rezultatele lui au cache separat și eticheta „model rapid”.
-  Mesajul „oracolul s-a odihnit” apare doar când s-au epuizat ambele bugete. Previziunile plătite folosesc mereu
-  modelul principal și nu depind de bugetul zilnic.
+  Mesajul „oracolul s-a odihnit” apare doar când s-au epuizat ambele bugete. Comenzile plătite care generează un rezultat nou folosesc mereu
+  modelul principal și nu depind de bugetul zilnic; trimiterea unui rezultat existent îi păstrează modelul și analiza.
 - **Progres în timp real** (`lib/jobs.js`) – fiecare cerere rulează în fundal; pagina primește prin
   Server-Sent Events ce caută oracolul, ce pagini citește și ce gândește. Dacă utilizatorul închide pagina,
   previziunea se termină oricum și o găsește la același link.
 - **Previziuni salvate** (`lib/store.js`) – ca fișiere JSON în `data/predictions/`. O cerere identică
-  (aceeași întrebare, chiar scrisă diferit, cu aceleași opțiuni) primește rezultatul existent, fără un nou apel,
-  pentru o durată care crește cu perioada previziunii. Răspunsul brut al modelului se păstrează în `data/raw/`.
-- **Domenii și perioade** (`lib/catalog.js`) – 14 domenii (economie, burse și cripto, tehnologie și AI,
-  politică, geopolitică, energie, imobiliare, climă, sănătate, sport, știință, societate, divertisment, altul),
+  (aceeași întrebare și opțiuni, indiferent de majuscule sau spații suplimentare) primește rezultatul existent,
+  fără un nou apel, pentru o durată care crește cu perioada previziunii. Simbolurile, punctuația și diacriticele
+  se păstrează: întrebările cu `<` și `>` sau `+` și `-` au cache separat. Cheile v2 invalidează cache-ul vechi;
+  previziunile existente rămân accesibile prin link, iar istoricul se grupează după cererea originală.
+  Răspunsul brut al modelului se păstrează în `data/raw/`.
+- **Domenii și perioade** (`lib/catalog.js`) – 26 de domenii (economie, burse și cripto, tehnologie și AI,
+  politică, geopolitică, energie, imobiliare, climă, sănătate, sport, știință, societate, divertisment,
+  afaceri, agricultură și alimentație, educație, turism, transport și infrastructură, mediu, securitate
+  cibernetică, justiție și reglementări, auto și mobilitate, industrie, comerț și consum, telecomunicații, altul),
   8 orizonturi și 8 regiuni. Fiecare domeniu îi spune modelului ce fel de surse contează (sondaje și piețe de
   predicții la politică, cote la sport, prognoze sezoniere la climă etc.).
 - **Verificarea** (`lib/verify.js`) – o dată pe oră, previziunile cu afirmații ajunse la termen (data de
   verificare dată de model + 2 zile) sunt verificate cu căutare web, cele mai vechi întâi, cât permite cota
   `VERIFY_DAILY_USD`. O afirmație nelămurită (de ex. datele oficiale încă nepublicate) se reverifică săptămânal,
-  de cel mult 4 ori. Rezultatul se salvează în fișierul previziunii.
+  cu cel mult 4 încercări în total. Un verdict adevărat/fals necesită o dovadă textuală și un URL găsit
+  efectiv de instrumentele verificatorului în apelul curent; în lipsa lor rămâne nelămurit. Verdictele
+  vechi fără dovadă sau URL sunt excluse din palmares și afișate ca nelămurite; se reverifică în aceleași
+  limite de timp, încercări și buget. Afirmațiile noi includ un criteriu explicit de rezolvare, stabilit la
+  generare, afișat lângă afirmație și folosit ulterior de verificator. Rezultatul se salvează în fișierul previziunii.
 - **Previzualizări și indexare** (`lib/seo.js`) – serverul pune în pagina `/p/<id>` titlul, rezumatul și imaginea
   1200×630 (desenată ca SVG, rasterizată cu ffmpeg și salvată în `data/og/`). Există și `sitemap.xml`, `robots.txt`.
 - **Plata** (`lib/payments.js`, `lib/orders.js`) – Stripe Checkout, prețul fixat pe server (`PRICE_EUR_CENTS`).
@@ -72,17 +116,21 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
   Stripe (`/pay/<comandă>`), webhook-ul `/api/stripe/webhook` (opțional) și o verificare la 2 minute a comenzilor
   în așteptare. Comenzile se salvează în `data/orders/`. Previziunile plătite rulează chiar dacă bugetul zilnic
   s-a epuizat între timp.
+  După o întrerupere, plata se verifică la Stripe indiferent de vechimea comenzii; expirarea este confirmată
+  de Stripe. Rezultatele deja salvate finalizează comenzile și declanșează emailul, iar lucrările pierdute
+  sunt reluate. Restituirile eșuate se reîncearcă de cel mult 5 ori în total, la intervale de 2, 4, 8 și
+  16 minute (la următoarea verificare periodică), cu aceeași cheie de idempotency. Încercările rezistă la
+  restart; după epuizarea lor apare o alertă în administrare pentru intervenție în Stripe.
 - **Termeni, acord, emailuri** (`lib/legal.js`, `lib/mail.js`) – pagina `/termeni` (română și engleză) se generează din
-  `COMPANY_NAME`, `COMPANY_CUI`, `CONTACT_EMAIL`. Cu plata activă, formularul cere bifa de acord (termeni + furnizarea
+  `COMPANY_NAME`, `COMPANY_CUI`, `CONTACT_EMAIL`. Numai opțiunea plătită pe email cere bifa de acord (termeni + furnizarea
   imediată a conținutului digital, OUG 34/2014 art. 16 lit. m); fără ea serverul nu deschide plata, iar acordul se
   salvează în comandă. După plată, clientul primește pe emailul folosit la Stripe linkul previziunii (sau anunțul de
   restituire), prin SMTP (`SMTP_*`, `MAIL_FROM`); dacă trimiterea eșuează, se reîncearcă la verificarea periodică.
 - **Statistici / administrare** (`/admin`, `lib/admin.js`, `lib/adminauth.js`) – fără parolă pentru adresele din
   `ADMIN_EMAILS`: pe pagina /admin scrii adresa, primești pe email un link de unică folosință (30 de minute), iar
   browserul rămâne recunoscut 180 de zile (cookie semnat, HttpOnly); în el apare pe site butonul „📊 Statistici”.
-  La cererea proprietarului, butonul apare și direct sub câmpul de email din formular când se scrie o adresă din
-  `ADMIN_EMAILS` (fără link): serverul confirmă adresa (cel mult 20 de verificări pe oră per IP) și deschide statisticile.
-  Rezervă: parola `ADMIN_PASSWORD` (formular, cel mult 10 încercări greșite pe oră, sau HTTP Basic). Conținut: bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
+  Adresa trebuie verificată prin linkul unic. Sesiunile anterioare acestei actualizări necesită reconectare.
+  Formularul de parolă și HTTP Basic împart limita de zece încercări eșuate pe oră per IP. Conținut: bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
   întrebările private) și erorile recente (`data/events.json`).
 - **Ce refuză oracolul** – întrebări despre persoane private, decese sau sănătatea cuiva, numere la loterie
   și orice ar putea face rău. Previziunile despre sănătate, bani sau drept sunt informative, nu sfaturi.
@@ -102,6 +150,7 @@ Cererile care eșuează din cauza serviciului nu consumă din limita vizitatorul
 | `DAILY_LIMIT` | 300 | previziuni noi pe zi, în total |
 | `MAX_CONCURRENT` / `MAX_QUEUE` | 3 / 20 | câte rulează simultan / câte așteaptă la rând |
 | `CACHE_ENABLED` | 1 | refolosirea previziunilor identice: 3 ore (o săptămână) … 7 zile (5–10 ani) |
+| `FREE_SCREEN_EMAIL_REQUIRED` | 1 | setează 0 pentru a testa separat formularul fără câmp de email la lectura gratuită |
 | `ORACLE_EFFORT` | medium | efortul selectat implicit în formular (vizitatorul alege între scăzut, mediu și înalt) |
 | `ORACLE_MAX_SEARCHES` / `ORACLE_MAX_FETCHES` | 12 / 4 | câte căutări / pagini citite la o previziune |
 
@@ -127,12 +176,49 @@ Cererile care eșuează din cauza serviciului nu consumă din limita vizitatorul
 
 | Metodă | Rută | Descriere |
 |---|---|---|
-| `GET` | `/api/catalog` | domenii, orizonturi, regiuni, eforturi și dacă se cere plata (`payment`) |
-| `POST` | `/api/predict` | `{domain, horizon, region, lang, question, effort?, private?, ui?}` → `{id, cached, etaSec}` sau, cu plată, `{orderId, checkoutUrl}` |
+| `GET` | `/api/catalog` | domenii, orizonturi, regiuni, eforturi, afișare gratuită (`freeDisplay`), email obligatoriu (`emailRequired`) și configurarea plății opționale (`payment`) |
+| `POST` | `/api/predict` | `{domain, horizon, region, lang, question, email, effort?, private?, ui?, delivery?}` → `{id, cached, etaSec}` sau, cu plată, `{orderId, checkoutUrl}` |
+| `POST` | `/api/p/:id/email` | `{email, consent: true, ui?}` → plata pentru trimiterea rezultatului existent, fără regenerare |
 | `POST` | `/api/orders/:id/confirm` | verifică plata la Stripe și pornește previziunea → `{status, predictionId}` |
 | `POST` | `/api/stripe/webhook` | confirmarea plății trimisă de Stripe (semnătură verificată) |
 | `GET` | `/api/predict/:id/events` | flux SSE: `status`, `search`, `results`, `fetch`, `thought`, `done`, `error` |
 | `GET` | `/api/p/:id` | previziunea completă, cu verificarea fiecărei afirmații (`checks`), istoricul întrebării (`history`) și dacă se poate actualiza (`refreshable`) |
 | `GET` | `/api/recent` | ultimele previziuni |
 | `GET` | `/api/track-record` | palmaresul: afirmații verificate, procent corect, Brier, calibrare |
+| `GET` | `/api/track-record?domain=economie&horizon=1m&tier=main` | filtre combinate opționale (`tier`: `main` sau `lite`) |
+| `GET` | `/api/example?lang=ro` | exemplu ilustrativ complet, gratuit și exclus din palmares |
+| `GET` | `/api/predict/:id/status` | starea lucrării pentru recuperarea conexiunii, fără date interne |
 | `GET` | `/og/<id>.png` | imaginea de previzualizare a linkului |
+
+Implicit, pentru afișare gratuită, `POST /api/predict` primește `delivery: "screen"` și un `email` valid, fără acord de livrare.
+Emailul este validat înainte de orice lucrare sau reutilizare din cache; nu intră în cererea modelului sau rezultatul public. `delivery: "email"` cere email și acord și deschide plata. Pentru compatibilitate,
+cererile API fără `delivery` păstrează alegerea livrării anterioare (plată când este configurată), cu aceeași cerință de email ca pentru livrarea aleasă.
+`POST /api/p/:id/email`, cu `{email, consent: true, ui?}`, creează plata pentru trimiterea rezultatului
+existent. Nu generează alt rezultat; comenzile păstrează identificatorul acestuia pe disc pentru recuperare.
+
+În administrare, conversia formularului este proporția intrărilor pe formular care au dus la afișarea unui raport cerut în acea vizită. Un refresh al paginii sau o revenire la formular începe o vizită. Exemplele, refuzurile, deschiderile directe și recitirile nu adaugă conversii.
+Fereastra este de 30 de zile UTC, grupată după lățimea inițială (mobil până la 640 px inclusiv) și varianta câmpului de email. Pentru o probă separată, setează `FREE_SCREEN_EMAIL_REQUIRED=0` pe instanța de test și repornește procesul. Adresa rămâne obligatorie la cumpărarea livrării.
+Pentru cereri API noi, `private: false` alege publicarea. Dacă opțiunea lipsește, raportul este accesibil doar prin link.
+
+## Operare și recuperare
+
+Folosește Node 22.13 sau mai recent. Coada lucrărilor și contoarele zilnice folosesc SQLite în
+`data/operations.sqlite`. O lucrare întreruptă se reia cu același ID la pornire. Un apel AI întrerupt
+poate fi facturat din nou la reluare. Rezultatele și comenzile existente rămân în formatul JSON.
+`GET /healthz` verifică accesul la SQLite și raportează numărul lucrărilor active.
+În administrare, contoarele zilnice UTC arată cererile de afișare, checkouturile create, plățile confirmate
+și emailurile acceptate de SMTP. Sunt volume de evenimente, inclusiv reveniri, nu utilizatori unici.
+
+Pentru generări gratuite, `DAILY_LIMIT` include rezultatele ambelor modele și lucrările în curs.
+Comenzile deja plătite sunt onorate. `CHECKOUT_PER_HOUR` limitează separat inițierile de plată per IP
+(implicit `RATE_PER_HOUR`), inclusiv trimiterea unui rezultat existent.
+Starea livrării în API este `deliveryStatus`. După trei erori de trimitere, reconcilierea pornește
+restituirea. O restituire aflată în procesare se verifică la Stripe la ciclurile următoare. Activează
+evenimentele Stripe `refund.updated` și `refund.failed` pentru actualizări imediate, inclusiv eșecuri ulterioare.
+
+Pentru copia externă, setează în **mediul cron** `BACKUP_SSH_DEST` (alias SSH și director existent,
+de exemplu `backup-host:/backups/nostra`) și `BACKUP_GPG_RECIPIENT` (amprenta verificată a cheii
+publice de criptare). Sunt necesare GPG, Python 3 și acces SSH neinteractiv cu cheia gazdei cunoscută.
+Cheia privată de decriptare se păstrează separat. Pentru restaurare, decriptează arhiva cu
+`gpg --output backup.tar.gz --decrypt backup.tar.gz.gpg`, extrage într-un director gol și verifică
+permisiunile înainte de pornirea serviciului. Testează restaurarea într-o instalare izolată.

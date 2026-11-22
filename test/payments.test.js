@@ -58,7 +58,7 @@ test('cu plata activă: întâi pagina de plată, previziunea abia după confirm
   // Pagina de întoarcere există și nu se indexează.
   const page = await fetch(`${base}/pay/${res.orderId}?session_id=demo`);
   assert.equal(page.status, 200);
-  assert.equal(page.headers.get('x-robots-tag'), 'noindex');
+  assert.match(page.headers.get('x-robots-tag'), /noindex/);
 
   const st = await (await post(`/api/orders/${res.orderId}/confirm`, {})).json();
   assert.equal(st.status, 'paid');
@@ -72,7 +72,7 @@ test('cu plata activă: întâi pagina de plată, previziunea abia după confirm
 
   // Confirmarea repetată (reîncărcarea paginii, webhook) nu pornește o a doua previziune.
   const again = await (await post(`/api/orders/${res.orderId}/confirm`, {})).json();
-  assert.deepEqual(again, { status: 'done', predictionId: st.predictionId });
+  assert.deepEqual(again, { status: 'done', deliveryStatus: 'delivered', predictionId: st.predictionId });
   assert.equal(store.all().length, 1);
 });
 
@@ -124,10 +124,13 @@ test('dacă oracolul refuză întrebarea, banii se returnează, iar pagina o spu
   }
 });
 
-test('verificarea periodică pornește comenzile plătite fără întoarcere pe site și le expiră pe cele vechi', async () => {
+test('verificarea periodică pornește comenzile plătite fără întoarcere pe site și le expiră pe cele confirmate ca expirate', async (t) => {
   const { orderId } = await (await post('/api/predict', { ...Q, question: 'Fereastră închisă?' })).json();
   const { orderId: old } = await (await post('/api/predict', { ...Q, question: 'Abandonată?' })).json();
   orders.get(old).createdAt = new Date(Date.now() - 2 * 3600000).toISOString();
+  const checkPaid = payments.checkPaid;
+  t.mock.method(payments, 'checkPaid', (o) => o.id === old
+    ? Promise.resolve({ paid: false, expired: true }) : checkPaid(o));
 
   await orders.reconcile();
   assert.ok(orders.get(orderId).predictionId, 'plata confirmată fără vizitator');
