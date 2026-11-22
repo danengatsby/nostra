@@ -164,3 +164,10 @@ test('prima pagină are butonul ASTRO-HOROSCOP către astrohor.fun, în aceeași
   assert.match(button, />ASTRO-HOROSCOP</);
   assert.doesNotMatch(button, /target=/);
 });
+
+test('subsolul are linkul Admin către pagina de autentificare', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  assert.match(html, /<a id="admin-link" href="\/admin" rel="nofollow">Admin<\/a>/);
+  const login = await fetch(`${base}/admin`);
+  assert.ok([401, 404].includes(login.status), 'fără autentificare, statisticile nu se văd');
+});
