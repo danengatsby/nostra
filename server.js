@@ -328,7 +328,7 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 // Termeni și confidențialitate.
 app.get(['/termeni', '/terms'], (req, res) => res.set('Cache-Control', 'public, max-age=600').type('html').send(legal.render()));
 
-// Administrare (parola din ADMIN_PASSWORD).
+// Administrare: contul (ADMIN_USER + parolă) sau linkul pe email (ADMIN_EMAILS).
 app.get('/admin', admin.auth, admin.page);
 
 // Accesul la statistici fără parolă: linkul de unică folosință trimis pe email.
@@ -360,11 +360,12 @@ app.get('/admin/acces', (req, res) => {
 app.post('/admin/parola', adminForm, (req, res) => {
   const k = ipKey(req);
   if (!adminauth.passwordAllowed(k)) return admin.loginPage(res.status(429), '', 'Prea multe încercări. Încearcă din nou peste o oră.');
-  if (!adminauth.passwordOk(req.body?.password)) {
+  if (!adminauth.credentialsOk(req.body?.user, req.body?.password)) {
     adminauth.passwordFailed(k);
-    return admin.loginPage(res.status(401), '', 'Parola nu e corectă.');
+    return admin.loginPage(res.status(401), '', 'Utilizatorul sau parola nu sunt corecte.');
   }
-  adminauth.setSession(res, 'password');
+  adminauth.setAccountSession(res);
+  events.log('admin', { what: 'acces-cu-cont' });
   res.redirect(303, '/admin');
 });
 app.get('/admin/iesire', (req, res) => {

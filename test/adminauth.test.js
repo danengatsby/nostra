@@ -10,8 +10,10 @@ const path = require('node:path');
 process.env.DEMO_MODE = '1';
 process.env.MAIL_CAPTURE = '1';
 process.env.ADMIN_EMAILS = 'sef@example.com, Doi@Example.com';
-process.env.ADMIN_PASSWORD = 'parola-corecta';
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'nostra-adminauth-'));
+delete process.env.ADMIN_PASSWORD;
+delete process.env.ADMIN_USER;
+process.env.ADMIN_PASSWORD_HASH = require('../lib/adminauth').hashPassword('parola-corecta');
 
 const { app } = require('../server');
 const mail = require('../lib/mail');
@@ -40,6 +42,8 @@ test('fără acces: butonul nu apare, /admin arată pagina de acces', async () =
   assert.equal(res.status, 401);
   const html = await res.text();
   assert.match(html, /Trimite-mi linkul de acces/);
+  assert.match(html, /name="user"/);
+  assert.match(html, /name="password"/);
   assert.doesNotMatch(html, /cheltuit azi/);
   const home = await (await fetch(`${base}/`)).text();
   assert.match(home, /id="stats"[^>]*hidden/);
@@ -89,13 +93,60 @@ test('cel mult 3 linkuri pe oră pentru aceeași adresă', async () => {
   assert.equal(mail._sent.length - before, 3);
 });
 
-test('parola, ca rezervă: corectă → acces; greșită de prea multe ori → blocat o oră', async () => {
-  assert.equal((await form('/admin/parola', { password: 'gresit' })).status, 401);
-  const ok = await form('/admin/parola', { password: 'parola-corecta' });
+test('contul: utilizator + parolă corecte → acces; greșite de prea multe ori → blocat o oră', async () => {
+  assert.equal((await form('/admin/parola', { user: 'admin', password: 'gresit' })).status, 401);
+  assert.equal((await form('/admin/parola', { user: 'altcineva', password: 'parola-corecta' })).status, 401);
+  assert.equal((await form('/admin/parola', { password: 'parola-corecta' })).status, 401, 'fără utilizator nu se intră');
+  const ok = await form('/admin/parola', { user: ' Admin ', password: 'parola-corecta' });
   assert.equal(ok.status, 303);
+  assert.equal(ok.headers.get('location'), '/admin');
+  assert.match(ok.headers.get('set-cookie'), /HttpOnly; Secure; SameSite=Lax; Max-Age=15552000/);
   assert.equal(await me(cookieOf(ok)), true);
-  for (let i = 0; i < 9; i++) await form('/admin/parola', { password: 'gresit' });
-  assert.equal((await form('/admin/parola', { password: 'parola-corecta' })).status, 429);
+  const page = await fetch(`${base}/admin`, { headers: { Cookie: cookieOf(ok) } });
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Ieșire/);
+  for (let i = 0; i < 7; i++) await form('/admin/parola', { user: 'admin', password: 'gresit' });
+  assert.equal((await form('/admin/parola', { user: 'admin', password: 'parola-corecta' })).status, 429);
+});
+
+test('schimbarea parolei sau a utilizatorului închide sesiunile deschise înainte', async () => {
+  require('../lib/adminauth')._reset();
+  const cookie = cookieOf(await form('/admin/parola', { user: 'admin', password: 'parola-corecta' }));
+  assert.equal(await me(cookie), true);
+  const previous = process.env.ADMIN_PASSWORD_HASH;
+  process.env.ADMIN_PASSWORD_HASH = require('../lib/adminauth').hashPassword('parola-noua-123');
+  try {
+    assert.equal(await me(cookie), false);
+  } finally { process.env.ADMIN_PASSWORD_HASH = previous; }
+  assert.equal(await me(cookie), true);
+  process.env.ADMIN_USER = 'sef';
+  try {
+    assert.equal(await me(cookie), false);
+  } finally { delete process.env.ADMIN_USER; }
+});
+
+test('amprenta parolei: scrypt cu sare, fără parola în clar; formatele greșite sunt respinse', () => {
+  const { hashPassword, verifyPassword } = require('../lib/adminauth');
+  const a = hashPassword('o parolă lungă');
+  const b = hashPassword('o parolă lungă');
+  assert.notEqual(a, b, 'sare diferită la fiecare amprentă');
+  assert.match(a, /^scrypt:16384:8:1:[\w-]+:[\w-]+$/);
+  assert.doesNotMatch(a, /parolă/);
+  assert.equal(verifyPassword('o parolă lungă', a), true);
+  assert.equal(verifyPassword('o parola lunga', a), false);
+  for (const bad of ['', 'scrypt', 'bcrypt:1:2:3:4:5', 'scrypt:16384:8:1::', null]) assert.equal(verifyPassword('x', bad), false);
+});
+
+test('varianta veche ADMIN_PASSWORD (în clar) funcționează doar fără amprentă', async () => {
+  require('../lib/adminauth')._reset();
+  const previous = process.env.ADMIN_PASSWORD_HASH;
+  delete process.env.ADMIN_PASSWORD_HASH;
+  process.env.ADMIN_PASSWORD = 'parola-veche';
+  try {
+    assert.equal((await form('/admin/parola', { user: 'admin', password: 'parola-veche' })).status, 303);
+    process.env.ADMIN_PASSWORD_HASH = previous;
+    assert.equal((await form('/admin/parola', { user: 'admin', password: 'parola-veche' })).status, 401);
+  } finally { delete process.env.ADMIN_PASSWORD; process.env.ADMIN_PASSWORD_HASH = previous; }
 });
 
 test('ieșirea șterge accesul din browser', async () => {
@@ -112,10 +163,34 @@ test('o adresă singură nu emite sesiune și lista administratorilor rămâne p
   }
 });
 
-test('Basic și formularul împart limita', async () => {
+test('Basic cere utilizatorul și parola contului și împarte limita cu formularul', async () => {
   require('../lib/adminauth')._reset();
-  for (let i = 0; i < 10; i++) {
-    await fetch(base + '/admin', { headers: { Authorization: 'Basic ' + Buffer.from('admin:wrong').toString('base64') } });
-  }
-  assert.equal((await form('/admin/parola', { password: 'parola-corecta' })).status, 429);
+  const basic = (pair) => fetch(base + '/admin', { headers: { Authorization: 'Basic ' + Buffer.from(pair).toString('base64') } });
+  assert.equal((await basic('admin:parola-corecta')).status, 200);
+  assert.equal((await basic('altcineva:parola-corecta')).status, 401);
+  for (let i = 0; i < 9; i++) await basic('admin:wrong');
+  assert.equal((await form('/admin/parola', { user: 'admin', password: 'parola-corecta' })).status, 429);
+});
+
+test('npm run admin-cont: scrie utilizatorul și amprenta, șterge parola în clar, păstrează restul', (t) => {
+  const { execFileSync } = require('node:child_process');
+  const { verifyPassword } = require('../lib/adminauth');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nostra-account-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const env = path.join(dir, '.env');
+  fs.writeFileSync(env, 'PORT=3200\nADMIN_PASSWORD=veche\nADMIN_EMAILS=sef@example.com\n');
+  const out = execFileSync(process.execPath, [path.join(__dirname, '..', 'deploy', 'admin-account.js'), '--env', env, '--user', 'Sef', '--generate'], { encoding: 'utf8' });
+  const password = /Parola \(afișată o singură dată, păstreaz-o\): (\S+)/.exec(out)[1];
+  assert.match(password, /^[A-Za-z0-9]{4}(-[A-Za-z0-9]{4}){3}$/);
+  const text = fs.readFileSync(env, 'utf8');
+  assert.match(text, /^PORT=3200$/m);
+  assert.match(text, /^ADMIN_EMAILS=sef@example.com$/m);
+  assert.match(text, /^ADMIN_USER=sef$/m);
+  assert.doesNotMatch(text, /^ADMIN_PASSWORD=/m);
+  assert.doesNotMatch(text, new RegExp(password));
+  assert.equal(verifyPassword(password, /^ADMIN_PASSWORD_HASH=(.+)$/m.exec(text)[1]), true);
+  assert.equal(fs.statSync(env).mode & 0o777, 0o600);
+  // Valoarea se citește intactă de încărcătorul .env al lui Node (fără `$` interpretat).
+  const loaded = execFileSync(process.execPath, ['-e', `process.loadEnvFile(${JSON.stringify(env)}); process.stdout.write(process.env.ADMIN_PASSWORD_HASH)`], { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(loaded, /^ADMIN_PASSWORD_HASH=(.+)$/m.exec(text)[1]);
 });

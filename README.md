@@ -128,11 +128,14 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
   imediată a conținutului digital, OUG 34/2014 art. 16 lit. m); fără ea serverul nu deschide plata, iar acordul se
   salvează în comandă. După plată, clientul primește pe emailul folosit la Stripe linkul previziunii (sau anunțul de
   restituire), prin SMTP (`SMTP_*`, `MAIL_FROM`); dacă trimiterea eșuează, se reîncearcă la verificarea periodică.
-- **Statistici / administrare** (`/admin`, `lib/admin.js`, `lib/adminauth.js`) – fără parolă pentru adresele din
-  `ADMIN_EMAILS`: pe pagina /admin scrii adresa, primești pe email un link de unică folosință (30 de minute), iar
-  browserul rămâne recunoscut 180 de zile (cookie semnat, HttpOnly); în el apare pe site butonul „📊 Statistici”.
-  Adresa trebuie verificată prin linkul unic. Sesiunile anterioare acestei actualizări necesită reconectare.
-  Formularul de parolă și HTTP Basic împart limita de zece încercări eșuate pe oră per IP. Conținut: bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
+- **Statistici / administrare** (`/admin`, `lib/admin.js`, `lib/adminauth.js`) – contul de administrare: pe /admin
+  scrii utilizatorul și parola, iar browserul rămâne conectat 180 de zile (cookie semnat, HttpOnly), până la
+  „Ieșire”; pe site apare butonul „📊 Statistici”. Contul se creează sau se schimbă cu `npm run admin-cont`
+  (sau `npm run admin-cont -- --generate` pentru o parolă generată, afișată o singură dată), care scrie în `.env`
+  `ADMIN_USER` și `ADMIN_PASSWORD_HASH` (amprentă scrypt, nu parola) și șterge vechea `ADMIN_PASSWORD`; apoi
+  `sudo systemctl restart nostra`. Schimbarea parolei închide sesiunile deschise cu cea veche. Accesul merge și
+  prin HTTP Basic (`utilizator:parolă`). Fără parolă, adresele din `ADMIN_EMAILS` pot cere un link de unică
+  folosință pe email (30 de minute). Formularul și HTTP Basic împart limita de zece încercări eșuate pe oră per IP. Conținut: bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
   întrebările private) și erorile recente (`data/events.json`).
 - **Ce refuză oracolul** – întrebări despre persoane private, decese sau sănătatea cuiva, numere la loterie
   și orice ar putea face rău. Previziunile despre sănătate, bani sau drept sunt informative, nu sfaturi.

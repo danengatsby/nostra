@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "DEMO_MODE=1 node server.js",
-    "test": "NODE_ENV=test node --test"
+    "test": "NODE_ENV=test node --test",
+    "admin-cont": "node deploy/admin-account.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",

@@ -195,7 +195,7 @@ test('Stripe: sesiunea de plată cere 2,99 € pentru comanda corectă, iar plat
 
 test('administrarea arată încasările și comenzile', async () => {
   process.env.ADMIN_PASSWORD = 'p';
-  const html = await (await fetch(`${base}/admin`, { headers: { Authorization: `Basic ${Buffer.from('a:p').toString('base64')}` } })).text();
+  const html = await (await fetch(`${base}/admin`, { headers: { Authorization: `Basic ${Buffer.from('admin:p').toString('base64')}` } })).text();
   assert.match(html, /<h2>Plăți<\/h2>/);
   assert.match(html, /restituite automat/);
   assert.match(html, /întrebare refuzată/);
