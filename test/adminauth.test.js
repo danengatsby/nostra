@@ -1,5 +1,5 @@
 'use strict';
-// Accesul la statistici fără parolă: link de unică folosință pe email → cookie → butonul „Statistici”.
+// Accesul la statistici: contul (utilizator + parolă) sau linkul de unică folosință pe email → cookie → /admin.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -34,7 +34,8 @@ const form = (url, data, headers = {}) => fetch(base + url, {
   method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers }, body: new URLSearchParams(data),
 });
 const cookieOf = (res) => (res.headers.get('set-cookie') || '').split(';')[0];
-const me = async (cookie) => (await (await fetch(`${base}/api/me`, { headers: cookie ? { Cookie: cookie } : {} })).json()).admin;
+// Browserul are acces la statistici? (/admin se deschide direct, fără pagina de autentificare)
+const me = async (cookie) => (await fetch(`${base}/admin`, { headers: cookie ? { Cookie: cookie } : {} })).status === 200;
 
 test('fără acces: butonul nu apare, /admin arată pagina de acces', async () => {
   assert.equal(await me(), false);
@@ -46,7 +47,8 @@ test('fără acces: butonul nu apare, /admin arată pagina de acces', async () =
   assert.match(html, /name="password"/);
   assert.doesNotMatch(html, /cheltuit azi/);
   const home = await (await fetch(`${base}/`)).text();
-  assert.match(home, /id="stats"[^>]*hidden/);
+  assert.doesNotMatch(home, /id="stats"/, 'fără butonul „Statistici” în antet');
+  assert.equal((await fetch(`${base}/api/me`)).status, 404);
 });
 
 test('linkul pe email: doar pentru adresele de administrator, de unică folosință, apoi acces 180 de zile', async () => {
@@ -70,7 +72,7 @@ test('linkul pe email: doar pentru adresele de administrator, de unică folosin�
   assert.match(sc, /Max-Age=15552000/);
   const cookie = cookieOf(open);
 
-  assert.equal(await me(cookie), true, 'butonul „Statistici” apare');
+  assert.equal(await me(cookie), true, '/admin se deschide direct');
   const stats = await fetch(`${base}/admin`, { headers: { Cookie: cookie } });
   assert.equal(stats.status, 200);
   assert.match(await stats.text(), /Nostradamus — statistici/);

@@ -130,7 +130,7 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
   restituire), prin SMTP (`SMTP_*`, `MAIL_FROM`); dacă trimiterea eșuează, se reîncearcă la verificarea periodică.
 - **Statistici / administrare** (`/admin`, `lib/admin.js`, `lib/adminauth.js`) – contul de administrare: pe /admin
   scrii utilizatorul și parola, iar browserul rămâne conectat 180 de zile (cookie semnat, HttpOnly), până la
-  „Ieșire”; pe site apare butonul „📊 Statistici”. Contul se creează sau se schimbă cu `npm run admin-cont`
+  „Ieșire”. Pe site, linkul „Admin” din subsol duce la această pagină. Contul se creează sau se schimbă cu `npm run admin-cont`
   (sau `npm run admin-cont -- --generate` pentru o parolă generată, afișată o singură dată), care scrie în `.env`
   `ADMIN_USER` și `ADMIN_PASSWORD_HASH` (amprentă scrypt, nu parola) și șterge vechea `ADMIN_PASSWORD`; apoi
   `sudo systemctl restart nostra`. Schimbarea parolei închide sesiunile deschise cu cea veche. Accesul merge și

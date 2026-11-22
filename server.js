@@ -318,9 +318,6 @@ app.get('/api/recent', (req, res) => {
   res.set('Cache-Control', 'no-cache').json(store.recent(24));
 });
 
-// Pentru butonul „Statistici”: browserul are acces la statistici?
-app.get('/api/me', (req, res) => res.set('Cache-Control', 'no-store').json({ admin: !!adminauth.sessionEmail(req) }));
-
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // --- Interfața ---
