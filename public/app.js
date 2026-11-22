@@ -76,7 +76,7 @@
       checkedCount: (n, total) => `${n}/${total} afirmații verificate`, historyUpdated: 'Rezultatele au fost actualizate.', historyOffline: 'Actualizarea nu a reușit. Istoricul salvat rămâne disponibil.', storageUnavailable: 'Istoricul nu poate fi păstrat în acest browser.',
       allDomains: 'Toate domeniile', allHorizons: 'Toate perioadele', allModels: 'Toate modelele', modelFilter: 'Modelul', mainModel: 'Principal', liteModel: 'Rapid', sampleSize: (n) => `Eșantion: ${n} afirmații rezolvate.`, smallSample: 'Eșantion mic: rezultatele pot varia mult.',
       retryConnection: 'Reîncearcă legătura', offline: 'Nu ai conexiune. Poți continua să completezi formularul; previziunile pornite continuă pe server.', reconnecting: 'Legătura cu serverul s-a întrerupt. Reîncercăm automat; previziunea continuă pe server.', connectionUnavailable: 'Legătura cu serverul s-a întrerupt. Poți reîncerca fără să reintroduci întrebarea.', trackUnavailable: 'Palmaresul nu a putut fi încărcat. Reîncearcă după restabilirea conexiunii.',
-      install: 'Instalează aplicația', stats: '📊 Statistici', stepDomain: 'Domeniul', stepQuestion: 'Întrebarea ta', optional: '(opțional)',
+      install: 'Instalează aplicația', stats: '📊 Statistici', astroButton: 'ASTRO-HOROSCOP', stepDomain: 'Domeniul', stepQuestion: 'Întrebarea ta', optional: '(opțional)',
       questionPh: 'Ex.: Va scădea inflația din România sub 5% până la finalul perioadei?', examples: 'Exemple de întrebări',
       questionHint: 'Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.',
       stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului', effort: 'Efortul oracolului',
@@ -178,7 +178,7 @@
       checkedCount: (n, total) => `${n}/${total} claims checked`, historyUpdated: 'Results have been updated.', historyOffline: 'Could not update. Your saved history is still available.', storageUnavailable: 'History cannot be saved in this browser.',
       allDomains: 'All domains', allHorizons: 'All periods', allModels: 'All models', modelFilter: 'Model', mainModel: 'Main', liteModel: 'Fast', sampleSize: (n) => `Sample: ${n} resolved claims.`, smallSample: 'Small sample: results may vary substantially.',
       retryConnection: 'Retry connection', offline: 'You are offline. You can keep filling in the form; forecasts already started continue on the server.', reconnecting: 'The server connection was interrupted. Retrying automatically; your forecast continues on the server.', connectionUnavailable: 'The server connection was interrupted. You can retry without entering your question again.', trackUnavailable: 'Could not load the track record. Retry when the connection is restored.',
-      install: 'Install the app', stats: '📊 Statistics', stepDomain: 'Domain', stepQuestion: 'Your question', optional: '(optional)',
+      install: 'Install the app', stats: '📊 Statistics', astroButton: 'ASTRO-HOROSCOPE', stepDomain: 'Domain', stepQuestion: 'Your question', optional: '(optional)',
       questionPh: 'E.g.: Will euro area inflation fall below 2% by the end of the period?', examples: 'Example questions',
       questionHint: 'Without a question, the oracle tells you what matters most to expect in the chosen domain and region.',
       stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language', effort: 'Oracle effort',
@@ -316,7 +316,8 @@
 
   function applyUi() {
     document.documentElement.lang = ui;
-    $('#astro-switch').href = ui === 'en' ? 'https://astrohor.fun/?lang=en' : 'https://astrohor.fun/';
+    const astro = ui === 'en' ? 'https://astrohor.fun/?lang=en' : 'https://astrohor.fun/';
+    for (const id of ['astro-switch', 'astro-header']) $(`#${id}`).href = astro;
     document.querySelectorAll('[data-i18n]').forEach((n) => { n.textContent = tr(n.dataset.i18n); });
     const pay = catalog?.payment;
     if (pay?.required) {

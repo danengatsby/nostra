@@ -155,3 +155,12 @@ test('catalogul acceptă exclusiv domenii și orizonturi proprii', async () => {
     assert.equal((await post({ domain: 'sport', horizon: '1m', ...overrides })).status, 400);
   }
 });
+
+test('prima pagină are butonul ASTRO-HOROSCOP către astrohor.fun, în aceeași filă', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  const button = html.match(/<a id="astro-header"[^>]*>[^<]*<\/a>/)?.[0];
+  assert.ok(button, 'butonul există în antet');
+  assert.match(button, /href="https:\/\/astrohor\.fun\/"/);
+  assert.match(button, />ASTRO-HOROSCOP</);
+  assert.doesNotMatch(button, /target=/);
+});
