@@ -123,11 +123,15 @@ function parseRequest(body = {}, ui = 'ro') {
   return req;
 }
 
-/** Durata tipică a unei previziuni (media ultimelor 10), pentru estimarea afișată în timpul așteptării. */
-function etaSeconds() {
-  const d = store.all().slice(0, 10).map((s) => store.get(s.id)?.meta?.durationMs).filter(Boolean);
-  return d.length ? Math.max(15, Math.round(d.reduce((a, b) => a + b, 0) / d.length / 1000)) : 120;
+/** Durata tipică a unei previziuni cu modelul dat (media ultimelor 10), pentru estimarea afișată în așteptare. */
+function etaSeconds(tier = 'main') {
+  const d = store.all().slice(0, 40).map((s) => store.get(s.id)?.meta)
+    .filter((m) => m?.durationMs && (m.tier || 'main') === tier).slice(0, 10).map((m) => m.durationMs);
+  return d.length ? Math.max(15, Math.round(d.reduce((a, b) => a + b, 0) / d.length / 1000)) : (tier === 'lite' ? 40 : 120);
 }
+
+/** Mesajul unei limite atinse: când gratuitul s-a epuizat, amintim de analiza plătită, disponibilă oricând. */
+const limitMessage = (e, ui) => (e.code === 'tired' && payments.mode() !== 'off' ? t('freeTired', ui, payments.priceLabel()) : e.message);
 
 function requestEmail(body, ui) {
   const email = typeof body?.email === 'string' ? body.email.trim() : '';
@@ -166,21 +170,24 @@ app.post('/api/predict', async (req, res) => {
       // Adresa la care trimitem previziunea: obligatorie cu plata activă.
       const { email, error } = deliveryEmail(req.body, ui);
       if (error) return res.status(400).json({ error });
+      // Analiza aprofundată: modelul principal, cu efortul plătit (implicit înalt), indiferent de alegerea din formular.
+      request.effort = catalog.paidEffort();
       // Cu plăți active, previziunea pornește abia după ce Stripe confirmă plata.
-      return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email, privateScope)), etaSec: etaSeconds() });
+      return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email, privateScope)), etaSec: etaSeconds('main') });
     }
     const result = jobs.submit(request, req.ip, ui, { privateScope });
     operations.count('screen');
-    res.json({ ...result, etaSec: etaSeconds() });
+    res.json({ ...result, etaSec: etaSeconds(jobs.get(result.id)?.tier || catalog.freeTier()) });
   } catch (e) {
-    if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: e.message });
+    if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: limitMessage(e, ui) });
     console.error('[predict]', e?.message || e);
     res.status(500).json({ error: t(payments.mode() !== 'off' && req.body?.delivery !== 'screen' ? 'paymentError' : 'internal', ui) });
   }
 });
 
-// După lectura gratuită se poate cumpăra trimiterea aceluiași rezultat, fără alt apel AI.
-app.post('/api/p/:id/email', async (req, res) => {
+// După o previziune rapidă (gratuită) se poate cere analiza aprofundată a aceleiași întrebări: o generare nouă,
+// plătită, cu modelul principal; rezultatul apare pe ecran și se trimite pe email.
+app.post('/api/p/:id/upgrade', async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const ui = uiLang(req.body?.ui);
   const rec = store.get(req.params.id);
@@ -188,12 +195,15 @@ app.post('/api/p/:id/email', async (req, res) => {
   if (rec.request.private) privacy.protectResponse(res);
   if (payments.mode() === 'off') return res.status(503).json({ error: t('paymentsOff', ui) });
   if (rec.prediction.declined) return res.status(400).json({ error: t('refused', ui) });
+  if ((rec.meta?.tier || 'main') !== 'lite') return res.status(400).json({ error: t('alreadyDeep', ui) });
   const { email, error } = deliveryEmail(req.body, ui);
   if (error) return res.status(400).json({ error });
   try {
-    res.json(await orders.create(rec.request, ui, req.ip, seo.BASE_URL_FOR(req), email, null, { deliveryPredictionId: rec.id }));
+    const request = { ...rec.request, effort: catalog.paidEffort() };
+    const privateScope = request.private ? privacy.sessionScope(req, res) : null;
+    res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email, privateScope, { upgradeOf: rec.id })), etaSec: etaSeconds('main') });
   } catch (e) {
-    if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: e.message });
+    if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: limitMessage(e, ui) });
     console.error('[email checkout]', e?.message || e);
     res.status(500).json({ error: t('paymentError', ui) });
   }

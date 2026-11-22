@@ -14,6 +14,9 @@ process.env.DAILY_BUDGET_USD = '1';
 process.env.RATE_PER_HOUR = '1';
 // Bugetul modelului de rezervă: încape o singură previziune (~0,105 $ cu consumul de test, estimare 0,06 $).
 process.env.FALLBACK_DAILY_USD = '0.1';
+// Testele de mai jos verifică trecerea de pe modelul principal pe cel rapid: vechiul mod gratuit (FREE_TIER=main).
+// Modul implicit (gratuitul doar pe modelul rapid) are testul lui la final.
+process.env.FREE_TIER = 'main';
 
 const store = require('../lib/store');
 const cost = require('../lib/cost');
@@ -170,4 +173,29 @@ test('o generare plătită simultană primește propria lucrare principală', as
   assert.notEqual(free.id, paid.id);
   assert.deepEqual([jobs.get(free.id).tier, jobs.get(paid.id).tier], ['lite', 'main']);
   await Promise.all([settle(free.id), settle(paid.id)]);
+});
+
+test('implicit (FREE_TIER=lite): gratuitul folosește doar modelul rapid, chiar cu buget principal disponibil', async () => {
+  delete process.env.FREE_TIER;
+  process.env.DEMO_MODE = '1';
+  process.env.FALLBACK_DAILY_USD = '0.1';
+  cost._reset();
+  fs.writeFileSync(path.join(process.env.DATA_DIR, 'budget.json'), JSON.stringify({ date: new Date().toISOString().slice(0, 10), spentUsd: 0, recent: [] }));
+  try {
+    assert.ok(cost.canSpend(0.5), 'bugetul principal e disponibil');
+    const free = jobs.submit({ ...REQ, question: 'Gratuit rapid?' }, '10.0.2.1');
+    assert.equal(jobs.get(free.id).tier, 'lite');
+    assert.equal(await settle(free.id), 'done');
+    assert.equal(store.get(free.id).meta.tier, 'lite');
+    const paid = jobs.submit({ ...REQ, question: 'Plătit aprofundat?' }, null, 'ro', { paid: true });
+    assert.equal(jobs.get(paid.id).tier, 'main');
+    await settle(paid.id);
+
+    // Bugetul modelului rapid epuizat: gratuitul se oprește (cu cod, pentru mesajul care amintește de varianta plătită),
+    // chiar dacă bugetul principal ar mai permite; plata rămâne posibilă.
+    cost.record(1, 'fallback');
+    assert.throws(() => jobs.submit({ ...REQ, question: 'Gratuit după buget?' }, '10.0.2.2'),
+      (e) => e instanceof jobs.LimitError && e.code === 'tired' && e.status === 429);
+    assert.doesNotThrow(() => jobs.precheck('10.0.2.3', 'ro', { ignoreBudget: true }));
+  } finally { process.env.FREE_TIER = 'main'; }
 });

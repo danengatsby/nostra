@@ -82,18 +82,18 @@
       stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului', effort: 'Efortul oracolului',
       publicNotice: 'Întrebarea și rezultatul vor fi publice și pot apărea în motoarele de căutare.',
       privateNotice: 'Întrebarea și rezultatul nu apar în lista publică sau în motoarele de căutare. Oricine are linkul le poate vedea.',
-      fixedPrice: (p) => `Afișarea este gratuită; trimiterea pe email costă ${p}, indiferent de efortul ales.`,
-      submit: 'Vezi gratuit previziunea', freeHint: 'Raportul complet pe ecran, fără plată.',
-      emailResult: (p) => `Trimite pe email — ${p}`,
-      emailFee: (p) => `Comision de trimitere pe email: ${p}, plată unică.`,
+      fixedPrice: (p) => `Efortul ales se aplică previziunii rapide gratuite; analiza aprofundată (${p}) folosește mereu efortul înalt.`,
+      submit: 'Vezi gratuit previziunea rapidă', freeHint: 'Gratuit, pe ecran, fără email: raportul complet făcut de modelul rapid, în ~1 minut.',
+      emailResult: (p) => `Analiză aprofundată — ${p}`,
+      emailFee: (p) => `Plată unică: ${p}, fără abonament. Rezultatul apare pe ecran și îl primești și pe email.`,
       emailContinue: (p) => `Continuă către plată — ${p}`,
-      emailExistingHint: 'Primești linkul acestei previziuni. Nu generăm alt rezultat și nu schimbăm analiza.',
+      emailExistingHint: 'Oracolul reface previziunea pentru aceeași întrebare cu modelul principal și efort înalt: mai multe căutări, pagini citite integral, ~2 minute. Dacă nu reușește, banii se returnează automat.',
       emailConfirmed: 'Emailul cu linkul previziunii a fost trimis.',
-      payHint: (p) => `Opțional: plătești ${p} pe pagina securizată Stripe pentru generare și trimitere pe email. Fără abonament. Poți citi gratuit pe ecran folosind „Vezi gratuit previziunea”.`,
+      payHint: (p) => `Modelul principal al oracolului, cu efort înalt: mai multe căutări, pagini citite integral, ~2 minute. Vezi rezultatul pe ecran și îl primești și pe email. Plată unică de ${p} pe pagina securizată Stripe, fără abonament. Dacă analiza nu poate fi făcută, banii se returnează automat.`,
       toPayment: 'Te ducem la pagina de plată…', confirming: 'Confirmăm plata…',
-      consent: 'Sunt de acord cu Termenii și confidențialitatea și cer trimiterea imediată pe email; înțeleg că, după furnizarea serviciului plătit, nu mai pot cere retragerea din contract.',
+      consent: 'Sunt de acord cu Termenii și confidențialitatea și cer furnizarea imediată a analizei aprofundate (pe ecran și pe email); înțeleg că, după furnizarea serviciului plătit, nu mai pot cere retragerea din contract.',
       readTerms: 'Citește termenii', termsLink: 'Termeni și confidențialitate', contact: 'Contact',
-      screenEmail: 'Email (obligatoriu și pentru afișarea gratuită)', deliveryOption: 'Trimitere pe email',
+      screenEmail: 'Email (obligatoriu și pentru afișarea gratuită)', deliveryOption: 'Analiză aprofundată (plătită)',
       emailLabel: 'Adresa de email la care primești previziunea', emailPh: 'nume@exemplu.ro',
       emailMissing: 'Scrie adresa de email la care să primești previziunea.', emailInvalid: 'Adresa de email nu pare corectă.',
       consentMissing: 'Bifează acordul cu termenii înainte de plată.',
@@ -184,18 +184,18 @@
       stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language', effort: 'Oracle effort',
       publicNotice: 'Your question and forecast will be public and may appear in search engines.',
       privateNotice: 'Your question and forecast are not publicly listed or indexed by search engines. Anyone with the link can view them.',
-      fixedPrice: (p) => `Viewing is free; email delivery costs ${p}, regardless of the effort selected.`,
-      submit: 'View the forecast for free', freeHint: 'The complete report on screen, without payment.',
-      emailResult: (p) => `Send by email — ${p}`,
-      emailFee: (p) => `Email delivery fee: ${p}, one-off payment.`,
+      fixedPrice: (p) => `The selected effort applies to the free quick forecast; the in-depth analysis (${p}) always uses high effort.`,
+      submit: 'Get the free quick forecast', freeHint: 'Free, on screen, no email: the complete report by the fast model, in about a minute.',
+      emailResult: (p) => `In-depth analysis — ${p}`,
+      emailFee: (p) => `One-off payment: ${p}, no subscription. The result appears on screen and is also emailed to you.`,
       emailContinue: (p) => `Continue to payment — ${p}`,
-      emailExistingHint: 'Receive a link to this forecast. We do not generate a new result or change the analysis.',
+      emailExistingHint: 'The oracle redoes the forecast for the same question with its main model and high effort: more searches, pages read in full, about 2 minutes. If it fails, you are refunded automatically.',
       emailConfirmed: 'The email with your forecast link has been sent.',
-      payHint: (p) => `Optional: pay ${p} on Stripe’s secure page for generation and email delivery. No subscription. You can read on screen for free using “View the forecast for free”.`,
+      payHint: (p) => `The oracle’s main model with high effort: more searches, pages read in full, about 2 minutes. You see the result on screen and also receive it by email. One-off payment of ${p} on Stripe’s secure page, no subscription. If the analysis cannot be produced, you are refunded automatically.`,
       toPayment: 'Taking you to the payment page…', confirming: 'Confirming your payment…',
-      consent: 'I agree to the Terms and privacy policy and request immediate email delivery; I understand that once the paid service is supplied I can no longer withdraw from the contract.',
+      consent: 'I agree to the Terms and privacy policy and request immediate supply of the in-depth analysis (on screen and by email); I understand that once the paid service is supplied I can no longer withdraw from the contract.',
       readTerms: 'Read the terms', termsLink: 'Terms and privacy', contact: 'Contact',
-      screenEmail: 'Email (required for free viewing too)', deliveryOption: 'Email delivery',
+      screenEmail: 'Email (required for free viewing too)', deliveryOption: 'In-depth analysis (paid)',
       emailLabel: 'Email address to receive your forecast', emailPh: 'name@example.com',
       emailMissing: 'Enter the email address where you want to receive the forecast.', emailInvalid: 'This email address does not look right.',
       consentMissing: 'Please tick the box accepting the terms before paying.',
@@ -665,7 +665,7 @@
     setSubmitting(true);
     if (!fromResult) saveDraft();
     try {
-      const res = await api(fromResult ? `/api/p/${encodeURIComponent(rec.id)}/email` : '/api/predict', {
+      const res = await api(fromResult ? `/api/p/${encodeURIComponent(rec.id)}/upgrade` : '/api/predict', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...(fromResult ? {} : formBody()), delivery: 'email', email, consent, ui }),
       });
@@ -1145,7 +1145,7 @@
     const statusLink = $('#delivery-status-link');
     statusLink.hidden = !orderId;
     if (orderId) statusLink.href = '/pay/' + encodeURIComponent(orderId);
-    const available = !orderId && catalog?.payment?.required && current && !current.example && !current.prediction.declined;
+    const available = !orderId && catalog?.payment?.required && current && !current.example && !current.prediction.declined && current.meta?.tier === 'lite';
     $('#email-result').hidden = !available;
     if (!available) {
       $('#result-email-options').hidden = true;

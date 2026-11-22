@@ -47,12 +47,14 @@ const finish = async (id) => (await (await fetch(`${base}/api/predict/${id}/even
 
 test('cu plata activă: întâi pagina de plată, previziunea abia după confirmare', async () => {
   const cat = await (await fetch(`${base}/api/catalog`)).json();
-  assert.deepEqual(cat.payment, { required: true, price: '1 €' });
+  assert.deepEqual(cat.payment, { required: true, price: '2,99 €' });
+  assert.equal(cat.freeTier, 'lite');
 
   const res = await (await post('/api/predict', { ...Q, question: 'Plătit?' })).json();
   assert.match(res.checkoutUrl, new RegExp(`/pay/${res.orderId}\\?session_id=demo$`));
   assert.equal(res.id, undefined, 'nicio previziune înainte de plată');
   assert.equal(orders.get(res.orderId).status, 'pending');
+  assert.equal(orders.get(res.orderId).request.effort, 'high', 'analiza aprofundată folosește mereu efortul înalt');
   assert.equal(store.all().length, 0);
 
   // Pagina de întoarcere există și nu se indexează.
@@ -150,12 +152,12 @@ test('previziunile plătite nu depind de bugetul zilnic (prețul acoperă costul
   assert.equal(store.get(predictionId).meta.tier, 'main', 'plătit → mereu modelul principal');
 });
 
-test('Stripe: sesiunea de plată cere 1 € pentru comanda corectă, iar plata se verifică strict', async () => {
+test('Stripe: sesiunea de plată cere 2,99 € pentru comanda corectă, iar plata se verifică strict', async () => {
   const calls = {};
   payments._setClient({
     checkout: { sessions: {
       create: async (p) => { calls.create = p; return { id: 'cs_test_1', url: 'https://checkout.stripe.com/c/pay/cs_test_1' }; },
-      retrieve: async (id) => ({ id, client_reference_id: calls.create.client_reference_id, amount_total: calls.amount ?? 100, currency: 'eur', payment_status: 'paid', status: 'complete', payment_intent: 'pi_1', customer_details: { email: 'platitor@example.com' } }),
+      retrieve: async (id) => ({ id, client_reference_id: calls.create.client_reference_id, amount_total: calls.amount ?? 299, currency: 'eur', payment_status: 'paid', status: 'complete', payment_intent: 'pi_1', customer_details: { email: 'platitor@example.com' } }),
     } },
     refunds: { create: async (p, o) => { calls.refund = [p, o]; return { id: 're_1' }; } },
   });
@@ -170,7 +172,9 @@ test('Stripe: sesiunea de plată cere 1 € pentru comanda corectă, iar plata s
     assert.equal(c.locale, 'en');
     assert.equal(c.client_reference_id, order.id);
     assert.equal(c.customer_email, 'client@example.com', 'pagina Stripe vine cu adresa completată');
-    assert.deepEqual([c.line_items[0].price_data.unit_amount, c.line_items[0].price_data.currency], [100, 'eur']);
+    assert.deepEqual([c.line_items[0].price_data.unit_amount, c.line_items[0].price_data.currency], [299, 'eur']);
+    assert.equal(c.line_items[0].price_data.product_data.name, 'Nostradamus in-depth forecast');
+    assert.equal(c.cancel_url, `https://nostradamus.my/?anulat=${order.id}`);
     assert.match(c.line_items[0].price_data.product_data.description, /Will it rain\?/);
     assert.equal(c.success_url, `https://nostradamus.my/pay/${order.id}?session_id={CHECKOUT_SESSION_ID}`);
     assert.equal(c.cancel_url, `https://nostradamus.my/?anulat=${order.id}`);
@@ -238,7 +242,8 @@ test('pagina de termeni: firma, prețul, dreptul de retragere, ANPC; linkuri în
   const html = await (await fetch(`${base}/termeni`)).text();
   assert.match(html, /Firma Test SRL/);
   assert.match(html, /CUI 123/);
-  assert.match(html, /1 €/);
+  assert.match(html, /2,99 €/);
+  assert.match(html, /analiza aprofundată/);
   assert.match(html, /OUG 34\/2014, art\. 16 lit\. m/);
   assert.match(html, /anpc\.ro/);
   assert.match(html, /Terms and privacy/);

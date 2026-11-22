@@ -108,10 +108,10 @@
 
         <p id="form-error" class="error" role="alert" hidden></p>
         <div class="forecast-actions">
-          <button id="submit" class="btn-primary" type="submit" data-i18n="submit">Vezi gratuit previziunea</button>
+          <button id="submit" class="btn-primary" type="submit" data-i18n="submit">Vezi gratuit previziunea rapidă</button>
         </div>
         <details id="email-options" class="payment-info" hidden>
-          <summary data-i18n="deliveryOption">Trimitere pe email</summary>
+          <summary data-i18n="deliveryOption">Analiză aprofundată (plătită)</summary>
           <p id="pay-hint" class="hint" hidden></p>
           <label id="consent-row" class="check-row" hidden>
             <input type="checkbox" id="consent" name="consent">
@@ -121,7 +121,7 @@
           <p id="email-error" class="error" role="alert" hidden></p>
           <button id="submit-email" class="btn-primary" type="button" hidden>Continuă către plată</button>
         </details>
-        <p class="hint center" data-i18n="freeHint">Raportul complet pe ecran, fără plată.</p>
+        <p class="hint center" data-i18n="freeHint">Gratuit, pe ecran, fără email: raportul complet făcut de modelul rapid, în ~1 minut.</p>
         <p class="hint center" data-i18n="duration">Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.</p>
       </form>
 
@@ -185,11 +185,11 @@
       <article id="result" class="result"></article>
       <div id="result-tools" class="card result-tools">
        <a id="delivery-status-link" class="btn-ghost" data-nav hidden data-i18n="orderLink">Vezi starea livrării</a>
-       <button id="email-result" class="btn-primary" type="button" hidden aria-expanded="false" aria-controls="result-email-options">Trimite pe email — 1 €</button>
+       <button id="email-result" class="btn-primary" type="button" hidden aria-expanded="false" aria-controls="result-email-options">Analiză aprofundată</button>
        <div id="result-email-options" class="email-options" hidden>
-         <p id="result-email-label" class="delivery-fee">Comision de trimitere pe email: 1 €.</p>
+         <p id="result-email-label" class="delivery-fee">Plată unică, fără abonament.</p>
          <form id="result-email-form" class="detail-content" novalidate>
-           <p class="hint" data-i18n="emailExistingHint">Primești linkul acestei previziuni. Nu generăm alt rezultat și nu schimbăm analiza.</p>
+           <p class="hint" data-i18n="emailExistingHint">Oracolul reface previziunea pentru aceeași întrebare cu modelul principal și efort înalt.</p>
            <label class="field email-field">
              <span data-i18n="emailLabel">Adresa de email la care primești previziunea</span>
              <input type="email" id="result-email" autocomplete="email" inputmode="email" maxlength="254" data-i18n-ph="emailPh" placeholder="nume@exemplu.ro">
@@ -200,7 +200,7 @@
                <a href="/termeni" target="_blank" rel="noopener" data-i18n="readTerms">Citește termenii</a></span>
            </label>
            <p id="result-email-error" class="error" role="alert" hidden></p>
-           <button id="result-submit-email" class="btn-primary" type="submit">Continuă către plată — 1 €</button>
+           <button id="result-submit-email" class="btn-primary" type="submit">Continuă către plată</button>
          </form>
        </div>
        <div class="result-actions">
