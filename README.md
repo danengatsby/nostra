@@ -203,8 +203,12 @@ Pentru cereri API noi, `private: false` alege publicarea. Dacă opțiunea lipse�
 ## Operare și recuperare
 
 Folosește Node 22.13 sau mai recent. Coada lucrărilor și contoarele zilnice folosesc SQLite în
-`data/operations.sqlite`. O lucrare întreruptă se reia cu același ID la pornire. Un apel AI întrerupt
-poate fi facturat din nou la reluare. Rezultatele și comenzile existente rămân în formatul JSON.
+`data/operations.sqlite`. La oprire (`systemctl restart` / `stop`), serverul nu mai pornește lucrări noi,
+așteaptă terminarea previziunilor și a verificărilor deja pornite (cel mult `SHUTDOWN_TIMEOUT_MS`, implicit
+9 minute; `TimeoutStopSec=600` în serviciu), apoi iese. Între timp site-ul răspunde normal, iar cererile noi
+așteaptă în coadă și pornesc după repornire, cu același ID. Doar o oprire forțată (al doilea semnal, timp
+depășit, cădere) întrerupe un apel AI, care poate fi facturat din nou la reluare.
+Pe HTTPS, răspunsurile trimit `Strict-Transport-Security` (un an). Rezultatele și comenzile existente rămân în formatul JSON.
 `GET /healthz` verifică accesul la SQLite și raportează numărul lucrărilor active.
 În administrare, contoarele zilnice UTC arată cererile de afișare, checkouturile create, plățile confirmate
 și emailurile acceptate de SMTP. Sunt volume de evenimente, inclusiv reveniri, nu utilizatori unici.

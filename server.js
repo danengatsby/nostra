@@ -46,6 +46,8 @@ app.use((req, res, next) => {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   });
+  // Pe HTTPS (prin nginx), browserul ține minte un an că site-ul se deschide doar securizat.
+  if (req.secure) res.set('Strict-Transport-Security', 'max-age=31536000');
   next();
 });
 
@@ -424,6 +426,28 @@ if (require.main === module) {
   orders.startReconciler();
   if (payments.mode() !== 'off') console.log(`Plăți: ${payments.mode()} (${payments.priceLabel()} / previziune)`);
   app.listen(PORT, HOST, () => console.log(`Nostradamus pornit pe http://${HOST}:${PORT}${process.env.DEMO_MODE === '1' ? ' (DEMO)' : ''}`));
+
+  // Oprirea fără pierderi (systemctl restart/stop): apelurile AI deja pornite se termină, ca să nu fie plătite
+  // de două ori la reluare. Între timp site-ul răspunde normal, iar cererile noi așteaptă în coadă repornirea.
+  let stopping = false;
+  const shutdown = async (signal) => {
+    if (stopping) {
+      console.warn('[oprire] al doilea semnal: ies imediat; lucrările rămase se reiau la pornire.');
+      process.exit(1);
+    }
+    stopping = true;
+    const active = jobs.running();
+    console.log(`[oprire] ${signal}: ${active ? `aștept ${active} previziuni în curs` : 'nicio previziune în curs'}; cererile noi se reiau după repornire.`);
+    setTimeout(() => {
+      console.warn('[oprire] timpul de așteptare a expirat; lucrările rămase se reiau la pornire.');
+      process.exit(0);
+    }, Number(process.env.SHUTDOWN_TIMEOUT_MS || 9 * 60000));
+    await Promise.all([jobs.drain(), verify.stop(), orders.stopReconciler()]);
+    console.log('[oprire] gata.');
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = { app, parseRequest };

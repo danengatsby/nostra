@@ -18,7 +18,8 @@ Environment=NODE_ENV=production
 ExecStart=/usr/local/bin/node /var/www/nostra/server.js
 Restart=on-failure
 RestartSec=3
-TimeoutStopSec=15
+# La oprire, previziunile în curs (cel mult JOB_TIMEOUT_MS = 8 min) se termină înainte de ieșire.
+TimeoutStopSec=600
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
