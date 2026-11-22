@@ -24,6 +24,7 @@ const adminauth = require('./lib/adminauth');
 const mail = require('./lib/mail');
 const events = require('./lib/events');
 const privacy = require('./lib/privacy');
+const access = require('./lib/access-log');
 const { t } = require('./lib/messages');
 
 const PORT = Number(process.env.PORT || 3200);
@@ -99,7 +100,21 @@ app.post('/api/form-visits', (req, res) => {
   res.status(204).end();
 });
 
+// Jurnalul accesărilor (tabelul „Accesări” din /admin): pagina deschisă sau un pas făcut în browser.
+// Pașii de pe server (previziune cerută, plată, email) se adaugă direct, la cererile respective.
+const CLIENT_STEPS = new Set(['report', 'deep_open', 'share']);
+app.post('/api/visit', (req, res) => {
+  const { id, path: page, lang, step, detail, utm, ref } = req.body || {};
+  if (typeof id !== 'string' || !access.ID_RE.test(id)) return res.sendStatus(400);
+  if (access.touch(id, req, { utm, ref, internal: !!adminauth.sessionEmail(req) })) {
+    if (typeof page === 'string') access.page(id, page, lang);
+    if (typeof step === 'string' && CLIENT_STEPS.has(step)) access.step(id, step, typeof detail === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(detail) ? detail : null);
+  }
+  res.status(204).end();
+});
+
 const uiLang = (v) => (v === 'en' ? 'en' : 'ro');
+const visitOf = (body) => (typeof body?.visit === 'string' && access.ID_RE.test(body.visit) ? body.visit : null);
 
 /**
  * Validează cererea venită din formular; întoarce un obiect curat sau aruncă un mesaj pentru utilizator,
@@ -173,10 +188,13 @@ app.post('/api/predict', async (req, res) => {
       // Analiza aprofundată: modelul principal, cu efortul plătit (implicit înalt), indiferent de alegerea din formular.
       request.effort = catalog.paidEffort();
       // Cu plăți active, previziunea pornește abia după ce Stripe confirmă plata.
-      return res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email, privateScope)), etaSec: etaSeconds('main') });
+      const order = await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email, privateScope, { visit: visitOf(req.body) });
+      access.step(visitOf(req.body), 'checkout', order.orderId.slice(0, 8));
+      return res.json({ ...order, etaSec: etaSeconds('main') });
     }
     const result = jobs.submit(request, req.ip, ui, { privateScope });
     operations.count('screen');
+    access.step(visitOf(req.body), result.cached ? 'free_cached' : 'free', result.id);
     res.json({ ...result, etaSec: etaSeconds(jobs.get(result.id)?.tier || catalog.freeTier()) });
   } catch (e) {
     if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: limitMessage(e, ui) });
@@ -201,7 +219,9 @@ app.post('/api/p/:id/upgrade', async (req, res) => {
   try {
     const request = { ...rec.request, effort: catalog.paidEffort() };
     const privateScope = request.private ? privacy.sessionScope(req, res) : null;
-    res.json({ ...(await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email, privateScope, { upgradeOf: rec.id })), etaSec: etaSeconds('main') });
+    const order = await orders.create(request, ui, req.ip, seo.BASE_URL_FOR(req), email, privateScope, { upgradeOf: rec.id, visit: visitOf(req.body) });
+    access.step(visitOf(req.body), 'checkout', order.orderId.slice(0, 8));
+    res.json({ ...order, etaSec: etaSeconds('main') });
   } catch (e) {
     if (e instanceof jobs.LimitError) return res.status(e.status).json({ error: limitMessage(e, ui) });
     console.error('[email checkout]', e?.message || e);
@@ -432,6 +452,7 @@ if (require.main === module) {
   jobs.recover(orders.finishRecoveredJob);
   verify.start();
   orders.startReconciler();
+  access.start();
   if (payments.mode() !== 'off') console.log(`Plăți: ${payments.mode()} (${payments.priceLabel()} / previziune)`);
   app.listen(PORT, HOST, () => console.log(`Nostradamus pornit pe http://${HOST}:${PORT}${process.env.DEMO_MODE === '1' ? ' (DEMO)' : ''}`));
 

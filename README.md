@@ -137,6 +137,14 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
   prin HTTP Basic (`utilizator:parolă`). Fără parolă, adresele din `ADMIN_EMAILS` pot cere un link de unică
   folosință pe email (30 de minute). Formularul și HTTP Basic împart limita de zece încercări eșuate pe oră per IP. Conținut: bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
   întrebările private) și erorile recente (`data/events.json`).
+- **Accesări** (`lib/access-log.js`, `lib/geoip.js`) – tabelul din /admin: pentru fiecare vizită data, ora, IP-ul,
+  locația aproximativă (DB-IP Lite, calculată pe server: `GEOIP_CITY_DB`, aici baza Astrohoroscop actualizată lunar),
+  sursa (utm_source, fbclid/gclid sau site-ul anterior), dispozitivul, paginile și pașii (previziune cerută, raport
+  afișat, analiza aprofundată deschisă, plată începută, plătită, trimisă pe email) și comanda pornită. Vizita are un
+  identificator aleator în `sessionStorage` (30 de minute de inactivitate sau 2 ore). Vizitele din browserele
+  conectate ca administrator sunt ascunse implicit (`/admin?toate=1` le arată). Datele stau în `data/access.db`
+  (600), se șterg după 14 zile și nu intră în backup; nu conțin emailuri sau textul întrebărilor. Baza de orașe
+  ocupă ~130 MB de memorie după prima vizită.
 - **Ce refuză oracolul** – întrebări despre persoane private, decese sau sănătatea cuiva, numere la loterie
   și orice ar putea face rău. Previziunile despre sănătate, bani sau drept sunt informative, nu sfaturi.
 

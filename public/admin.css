@@ -35,3 +35,9 @@ code { font-size: .85em; }
 .notice { background: var(--card); border-left: 3px solid var(--gold); padding: 10px 12px; border-radius: 6px; }
 .error { color: #ff7f7f; }
 @media (max-width: 700px) { .cols { grid-template-columns: 1fr; } }
+/* Tabelul „Accesări” */
+.access td { font-size: .84rem; }
+.access td:nth-child(1), .access td:nth-child(2), .access .ip { white-space: nowrap; }
+.access .ip { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.access td:nth-child(7) { min-width: 280px; }
+.access b { font-weight: 600; }

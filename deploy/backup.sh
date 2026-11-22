@@ -21,7 +21,7 @@ with sqlite3.connect(Path(sys.argv[1]).resolve().as_uri() + '?mode=ro', uri=True
         raise RuntimeError('Backup SQLite invalid')
 PY
 fi
-tar -cf "$stage/content.tar" -C "$APP" --exclude=data/og --exclude='data/operations.sqlite*' --exclude='*.tmp' data .env
+tar -cf "$stage/content.tar" -C "$APP" --exclude=data/og --exclude='data/operations.sqlite*' --exclude='data/access.db*' --exclude='*.tmp' data .env
 if [ -f "$stage/data/operations.sqlite" ]; then
   tar -rf "$stage/content.tar" -C "$stage" data/operations.sqlite
 fi

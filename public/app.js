@@ -403,6 +403,31 @@
     });
   }
 
+  // ---------- jurnalul accesărilor (tabelul „Accesări”, doar pentru administrator) ----------
+  // Un identificator aleator al vizitei, păstrat cât fila e deschisă (sessionStorage). O vizită nouă începe după
+  // 30 de minute de inactivitate sau 2 ore. La începutul vizitei se trimite și sursa (utm_source sau site-ul anterior).
+  let visitMemory = null; // când sessionStorage nu e disponibil
+  function visitId() {
+    const now = Date.now();
+    let v = visitMemory;
+    try { v = JSON.parse(sessionStorage.getItem('nostra.visit') || 'null') || v; } catch { /* stocare indisponibilă */ }
+    const fresh = !v || !/^[a-f0-9]{32}$/.test(v.id || '') || now - v.started > 2 * 3600000 || now - v.last > 30 * 60000;
+    if (fresh) v = { id: Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join(''), started: now };
+    visitMemory = { id: v.id, started: v.started, last: now };
+    try { sessionStorage.setItem('nostra.visit', JSON.stringify(visitMemory)); } catch { /* stocare indisponibilă */ }
+    return { id: v.id, fresh };
+  }
+  function trackVisit(payload) {
+    const { id, fresh } = visitId();
+    const body = { id, ...payload };
+    if (fresh) {
+      const params = new URLSearchParams(location.search);
+      body.utm = params.get('utm_source') || (params.has('fbclid') ? 'facebook' : params.has('gclid') ? 'google' : '');
+      try { body.ref = document.referrer ? new URL(document.referrer).hostname : ''; } catch { body.ref = ''; }
+    }
+    fetch('/api/visit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+  }
+
   function startFormVisit() {
     if (!catalog.formConversionEnabled) return;
     const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -513,7 +538,7 @@
     saveDraft(body);
     const { consent, ...screenBody } = body;
     const res = await api('/api/predict', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...screenBody, email: catalog.emailRequired ? screenBody.email : undefined, delivery: 'screen', ui }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...screenBody, email: catalog.emailRequired ? screenBody.email : undefined, delivery: 'screen', ui, visit: visitId().id }),
     });
     setConnection('connected');
     if (res.etaSec) { eta = res.etaSec; sessionStore.set('eta', String(eta)); }
@@ -668,7 +693,7 @@
     try {
       const res = await api(fromResult ? `/api/p/${encodeURIComponent(rec.id)}/upgrade` : '/api/predict', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...(fromResult ? {} : formBody()), delivery: 'email', email, consent, ui }),
+        body: JSON.stringify({ ...(fromResult ? {} : formBody()), delivery: 'email', email, consent, ui, visit: visitId().id }),
       });
       if (!res.checkoutUrl) throw new Error(tr('network'));
       if (!fromResult && formVisit) sessionStore.set('visit-order-' + res.orderId, formVisit);
@@ -823,6 +848,7 @@
       show('result');
       const visit = sessionStore.get('visit-report-' + id);
       if (visit && !rec.prediction.declined) recordDisplay(id, visit);
+      trackVisit({ step: 'report', detail: id });
       document.title = `${rec.prediction.title || 'Nostradamus'} — Nostradamus`;
       if (fresh) notifyDone(rec.prediction.title, id);
     } catch (ex) {
@@ -1224,6 +1250,7 @@
 
   // ---------- navigare ----------
   function route() {
+    trackVisit({ path: location.pathname, lang: ui });
     if (source) { source.close(); source = null; }
     clearInterval(timer);
     clearInterval(connectionTimer); connectionTimer = null;
@@ -1299,8 +1326,10 @@
     }
   });
 
+  for (const network of ['wa', 'fb', 'x', 'tg']) $(`#share-${network}`).addEventListener('click', () => trackVisit({ step: 'share', detail: network }));
   $('#share').addEventListener('click', () => {
     if (!current) return;
+    trackVisit({ step: 'share', detail: 'sistem' });
     navigator.share({ title: current.prediction.title, url: `${location.origin}/p/${current.id}` }).catch(() => {});
   });
 
@@ -1390,11 +1419,13 @@
   $('#question').addEventListener('input', () => { $('#qcount').textContent = `${$('#question').value.length}/500`; });
   $('#form').addEventListener('submit', onSubmit);
   $('#submit-email').addEventListener('click', () => submitEmail());
+  $('#email-options').addEventListener('toggle', () => { if ($('#email-options').open) trackVisit({ step: 'deep_open' }); });
   $('#email-result').addEventListener('click', () => {
     const panel = $('#result-email-options');
     panel.hidden = !panel.hidden;
     $('#email-result').setAttribute('aria-expanded', String(!panel.hidden));
     if (!panel.hidden) {
+      trackVisit({ step: 'deep_open', detail: current?.id });
       if (!$('#result-email').value) $('#result-email').value = $('#email').value.trim();
       panel.scrollIntoView({ block: 'nearest' });
       $('#result-email').focus({ preventScroll: true });
