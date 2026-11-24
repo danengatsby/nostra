@@ -18,7 +18,7 @@ function worker(cacheControl = 'public, max-age=3600') {
     fetch: async () => new Response('asset', { headers: { 'Cache-Control': cacheControl } }),
     caches: {
       open: async () => ({ put: async (req) => { saved.push(req.url); } }),
-      keys: async () => ['nostra-v3', 'nostra-v4', 'nostra-v5', 'nostra-v6', 'nostra-v7', 'nostra-v8', 'other-app'],
+      keys: async () => ['nostra-v3', 'nostra-v4', 'nostra-v5', 'nostra-v6', 'nostra-v7', 'nostra-v8', 'nostra-v9', 'nostra-v10', 'other-app'],
       delete: async (key) => { deleted.push(key); },
       match: async () => null,
     },
@@ -58,5 +58,5 @@ test('activarea service worker-ului nou elimină copiile vechi', async () => {
   let activated;
   handlers.activate({ waitUntil: (promise) => { activated = promise; } });
   await activated;
-  assert.deepEqual(deleted, ['nostra-v3', 'nostra-v4', 'nostra-v5', 'nostra-v6', 'nostra-v7']);
+  assert.deepEqual(deleted, ['nostra-v3', 'nostra-v4', 'nostra-v5', 'nostra-v6', 'nostra-v7', 'nostra-v8', 'nostra-v9']);
 });

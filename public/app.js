@@ -5,12 +5,12 @@
 (async () => {
   const $ = (sel) => document.querySelector(sel);
   // Un proces pornit înaintea actualizării poate servi încă șablonul HTML anterior.
-  if (!$('#domains') || !$('#other-domain')) {
+  if (!$('#question-min')) {
     try {
       const response = await fetch('/index.html', { cache: 'reload' });
       if (!response.ok) throw new Error('shell');
       const shell = new DOMParser().parseFromString(await response.text(), 'text/html');
-      if (!shell.querySelector('#other-domain')) throw new Error('shell');
+      if (!shell.querySelector('#question-min')) throw new Error('shell');
       for (const selector of ['header', 'main', 'footer']) $(selector).replaceWith(shell.querySelector(selector));
       if (!window.NostraLibrary?.orderPresentation) {
         await new Promise((resolve, reject) => {
@@ -28,6 +28,8 @@
   }
   const views = ['form', 'progress', 'result', 'order', 'error'];
   let catalog = null;
+  let offlineCatalog = false;
+  let loadingCatalog = false;
   let answerLangChosen = false;
   let source = null; // EventSource activ
   let timer = null;
@@ -51,7 +53,7 @@
   // ---------- limba interfeței ----------
   const U = {
     ro: {
-      checkOrder: 'Reverifică starea comenzii', advancedOptions: 'Opțiuni avansate', private: 'Previziune privată', exampleIntro: 'Vezi ce conține o previziune înainte să comanzi.', otherDomains: 'Alege un domeniu sau scrie propria întrebare',
+      checkOrder: 'Reverifică starea comenzii', advancedOptions: 'Opțiuni avansate', private: 'Previziune privată', otherDomains: 'Alege un domeniu sau scrie propria întrebare',
       screenEmailMissing: 'Introdu o adresă de email validă pentru lectura gratuită.',
       openForecast: 'Deschide previziunea', systemShare: 'Alte opțiuni', orderLink: 'Vezi starea livrării',
       paidTitle: 'Plată confirmată', orderWaiting: 'Așteptăm confirmarea plății', expiredTitle: 'Plată expirată', refundTitle: 'Restituirea plății',
@@ -65,35 +67,39 @@
       firstCheckAfter: 'Prima verificare după', nextCheckAfter: 'Următoarea verificare după',
       newChecks: n => n === 1 ? '1 rezultat nou' : `${n} rezultate noi`,
       tagline: 'Previziuni construite din ce se întâmplă acum în lume',
-      viewExample: 'Vezi un exemplu complet',
+      viewExample: 'Vezi un raport exemplu', edit: 'Modifică', yourQuestion: 'Întrebarea ta', questionMin: 'Scrie cel puțin 5 caractere.', tryExample: 'Încearcă cu întrebarea ta', exploreDomain: 'Domeniu, regiune și perioadă',
+      exampleChecks: 'Într-un raport real poți urmări întrebarea și reveni după termen pentru a vedea ce afirmații s-au adeverit și pe ce dovezi se bazează verdictul.',
+      sharePrivate: 'Oricine primește linkul poate citi întrebarea și raportul.', viewProgress: 'Vezi progresul',
+      declinedQuestion: 'Întrebare refuzată', rephrase: 'Reformulează', removedHistory: 'Raportul a fost eliminat din acest browser. Linkul rămâne valabil.', removedEntry: 'Întrebarea a fost eliminată din istoricul acestui browser.',
+      createForecast: 'Creează o previziune', reloadReport: 'Reîncarcă raportul', reloadPage: 'Reîncarcă pagina',
       exampleLabel: 'Exemplu ilustrativ', exampleNote: 'Datele, instituțiile și sursele sunt fictive. Acest exemplu arată formatul rezultatului; nu este o prognoză actuală și nu necesită plată.',
       draftSaved: 'Formular salvat în această filă.', draftUnavailable: 'Browserul nu permite salvarea formularului.', clearDraft: 'Golește formularul',
       personalTitle: 'Istoricul meu', personalHint: 'Salvat în acest browser. Întrebările urmărite se actualizează când revii în aplicație.',
       historyAll: 'Toate', historyWatched: 'Întrebări urmărite', refreshChecks: 'Actualizează rezultatele', personalEmpty: 'Previziunile pe care le consulți vor apărea aici.', watchedEmpty: 'Urmărește o întrebare din pagina unei previziuni.',
-      watchQuestion: 'Urmărește întrebarea', unwatchQuestion: 'Nu mai urmări', removeHistory: 'Elimină', pendingForecast: 'În lucru', failedForecast: 'Previziune nereușită',
+      watchQuestion: 'Urmărește întrebarea', unwatchQuestion: 'Nu mai urmări', removeHistory: 'Elimină din istoricul meu', pendingForecast: 'În lucru', failedForecast: 'Previziune nereușită',
       watchHint: 'Urmărirea este salvată în acest browser. Verificăm actualizările când revii; nu trimitem notificări și nu generăm previziuni noi automat.',
       baseProbability: 'Probabilitatea scenariului de bază',
       checkedCount: (n, total) => `${n}/${total} afirmații verificate`, historyUpdated: 'Rezultatele au fost actualizate.', historyOffline: 'Actualizarea nu a reușit. Istoricul salvat rămâne disponibil.', storageUnavailable: 'Istoricul nu poate fi păstrat în acest browser.',
-      allDomains: 'Toate domeniile', allHorizons: 'Toate perioadele', allModels: 'Toate modelele', modelFilter: 'Modelul', mainModel: 'Principal', liteModel: 'Rapid', sampleSize: (n) => `Eșantion: ${n} afirmații rezolvate.`, smallSample: 'Eșantion mic: rezultatele pot varia mult.',
+      allDomains: 'Toate domeniile', allHorizons: 'Toate perioadele', allModels: 'Toate modelele', modelFilter: 'Modelul', mainModel: 'Principal', liteModel: 'Rapid', smallSample: 'Eșantion mic: rezultatele pot varia mult.',
       retryConnection: 'Reîncearcă legătura', offline: 'Nu ai conexiune. Poți continua să completezi formularul; previziunile pornite continuă pe server.', reconnecting: 'Legătura cu serverul s-a întrerupt. Reîncercăm automat; previziunea continuă pe server.', connectionUnavailable: 'Legătura cu serverul s-a întrerupt. Poți reîncerca fără să reintroduci întrebarea.', trackUnavailable: 'Palmaresul nu a putut fi încărcat. Reîncearcă după restabilirea conexiunii.',
-      install: 'Instalează aplicația', astroButton: 'ASTRO-HOROSCOP', stepDomain: 'Domeniul', stepQuestion: 'Întrebarea ta', optional: '(opțional)',
+      install: 'Instalează aplicația', astroButton: 'ASTRO-HOROSCOP', stepDomain: 'Domeniul', stepQuestion: 'Ce vrei să afli?', optional: '(opțional)',
       questionPh: 'Ex.: Va scădea inflația din România sub 5% până la finalul perioadei?', examples: 'Exemple de întrebări',
-      questionHint: 'Fără întrebare, oracolul îți spune ce e cel mai important de așteptat în domeniul și regiunea aleasă.',
+      questionHint: 'Poți lăsa întrebarea goală pentru o privire de ansamblu asupra domeniului ales.',
       stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului', effort: 'Efortul oracolului',
       publicNotice: 'Întrebarea și rezultatul vor fi publice și pot apărea în motoarele de căutare.',
-      privateNotice: 'Întrebarea și rezultatul nu apar în lista publică sau în motoarele de căutare. Oricine are linkul le poate vedea.',
+      privateNotice: 'Accesibilă prin link. Ascunsă din lista publică și din motoarele de căutare.',
       fixedPrice: (p) => `Efortul ales se aplică previziunii rapide gratuite; analiza aprofundată (${p}) folosește mereu efortul înalt.`,
-      submit: 'Vezi gratuit previziunea rapidă', freeHint: 'Gratuit, pe ecran, fără email: raportul complet făcut de modelul rapid, în ~1 minut.',
+      submit: 'Generează gratuit', freeHint: minutes => `Raportul apare pe ecran în aproximativ ${minutes === 1 ? 'un minut' : minutes + ' minute'}.`,
       emailResult: (p) => `Analiză aprofundată — ${p}`,
       emailFee: (p) => `Plată unică: ${p}, fără abonament. Rezultatul apare pe ecran și îl primești și pe email.`,
       emailContinue: (p) => `Continuă către plată — ${p}`,
-      emailExistingHint: 'Oracolul reface previziunea pentru aceeași întrebare cu modelul principal și efort înalt: mai multe căutări, pagini citite integral, ~2 minute. Dacă nu reușește, banii se returnează automat.',
+      emailExistingHint: 'Căutăm în mai multe surse și analizăm în detaliu aceeași întrebare. Raportul apare pe ecran și primești linkul pe email în aproximativ 2 minute. Dacă nu reușește, banii se returnează automat.',
       emailConfirmed: 'Emailul cu linkul previziunii a fost trimis.',
-      payHint: (p) => `Modelul principal al oracolului, cu efort înalt: mai multe căutări, pagini citite integral, ~2 minute. Vezi rezultatul pe ecran și îl primești și pe email. Plată unică de ${p} pe pagina securizată Stripe, fără abonament. Dacă analiza nu poate fi făcută, banii se returnează automat.`,
+      payHint: (p) => `Căutăm în mai multe surse și analizăm în detaliu întrebarea. Raportul apare pe ecran și primești linkul pe email în aproximativ 2 minute. Plată unică de ${p} pe pagina securizată Stripe, fără abonament. Dacă analiza nu poate fi făcută, banii se returnează automat.`,
       toPayment: 'Te ducem la pagina de plată…', confirming: 'Confirmăm plata…',
       consent: 'Sunt de acord cu Termenii și confidențialitatea și cer furnizarea imediată a analizei aprofundate (pe ecran și pe email); înțeleg că, după furnizarea serviciului plătit, nu mai pot cere retragerea din contract.',
       readTerms: 'Citește termenii', termsLink: 'Termeni și confidențialitate', contact: 'Contact',
-      screenEmail: 'Email (obligatoriu și pentru afișarea gratuită)', deliveryOption: 'Analiză aprofundată (plătită)',
+      screenEmail: 'Email (obligatoriu și pentru afișarea gratuită)',
       emailLabel: 'Adresa de email la care primești previziunea', emailPh: 'nume@exemplu.ro',
       emailMissing: 'Scrie adresa de email la care să primești previziunea.', emailInvalid: 'Adresa de email nu pare corectă.',
       consentMissing: 'Bifează acordul cu termenii înainte de plată.',
@@ -101,13 +107,12 @@
       payExpired: 'Plata nu a fost finalizată, iar pagina de plată a expirat. Nu ți s-a luat niciun ban.',
       payCanceled: 'Plata a fost anulată. Nu ți s-a luat niciun ban.',
       refundedNote: 'Plata pentru această previziune a fost returnată automat.',
-      duration: 'Durează de obicei 1–3 minute: oracolul caută și citește surse actuale înainte să răspundă.',
       trackTitle: 'Palmaresul oracolului', loading: 'Se încarcă…', recentTitle: 'Previziuni recente',
       recentEmpty: 'Încă nu există previziuni. Fii primul care consultă oracolul.',
       preparing: 'Oracolul se pregătește…', notify: '🔔 Anunță-mă când e gata', notifyOn: '🔔 Te anunțăm când e gata',
       leaveHint: 'Poți lăsa pagina deschisă sau poți reveni mai târziu la același link: previziunea se termină oricum.',
       share: 'Distribuie', copyLink: 'Copiază linkul', pdf: 'Salvează PDF', newForecast: 'O nouă previziune',
-      errorTitle: 'Oracolul a tăcut', tryAgain: 'Încearcă din nou',
+      errorTitle: 'Oracolul a tăcut',
       disclaimer: 'Previziunile sunt estimări probabilistice generate automat de inteligență artificială pe baza surselor publice găsite la momentul cererii. Nu sunt certitudini și nu reprezintă consultanță financiară, medicală sau juridică.',
       phases: { queued: 'Aștepți la rând…', research: 'Oracolul caută pe internet…', writing: 'Oracolul scrie previziunea…', repair: 'Oracolul își pune gândurile în ordine…', fallback: 'Oracolul continuă cu modelul rapid…' },
       queuePos: (n) => `Ești al ${n}-lea la rând.`,
@@ -122,38 +127,41 @@
         intro: 'Oracolul își verifică singur previziunile: după data fiecărei afirmații, caută ce s-a întâmplat de fapt și o marchează ca adevărată sau falsă. Aici se va vedea cât de des are dreptate.',
         waiting: (n, d) => `${n} afirmații așteaptă verificarea. Primele rezultate: după ${d}.`, none: 'Încă nu există afirmații de verificat.',
         correct: (c, n) => `previziuni corecte (${c} din ${n})`, brier: 'scor Brier (0 = perfect, 0,25 = cu banul)', pending: 'afirmații încă în așteptare',
-        calibration: 'Calibrare', said: (r) => `Spus ${r}`, happened: (a, n) => `s-a întâmplat ${a}% (${n})`, latest: 'Ultimele verificări',
+        counts: (n, pending) => `${n} ${n === 1 ? 'afirmație verificată' : 'afirmații verificate'} · ${pending} în așteptare`,
+        verdict: (p, outcome) => `Estimat la ${p}% · ${outcome ? 'evenimentul s-a produs' : 'evenimentul nu s-a produs'}`,
+        metrics: 'Rată de succes, scor Brier și calibrare', calibration: 'Calibrare', said: (r) => `Spus ${r}`, happened: (a, n) => `s-a întâmplat ${a}% (${n})`, latest: 'Ultimele verificări',
       },
       examplesBy: {
-        economie: ['Va scădea inflația din România sub 5%?', 'Va intra zona euro în recesiune?'],
-        piete: ['Unde va fi cursul EUR/RON?', 'Va depăși Bitcoin maximul istoric?'],
-        tehnologie: ['Ce lansări importante în AI vor avea loc?', 'Cum va evolua piața smartphone-urilor?'],
-        politica: ['Cine va câștiga următoarele alegeri?', 'Va rămâne coaliția actuală la guvernare?'],
-        geopolitica: ['Va exista un armistițiu în Ucraina?', 'Cum vor evolua relațiile SUA–China?'],
-        energie: ['Cât va costa barilul de petrol Brent?', 'Vor scădea facturile la energie în România?'],
-        imobiliare: ['Vor crește prețurile apartamentelor în București?', 'Vor scădea dobânzile la creditele ipotecare?'],
-        clima: ['Va fi iarna mai caldă decât media?', 'Va fi acest an cel mai cald înregistrat?'],
-        sanatate: ['Cum va evolua sezonul de gripă?', 'Ce tratamente noi vor fi aprobate în UE?'],
-        sport: ['Cine va câștiga Liga Campionilor?', 'Se va califica România la Campionatul Mondial?'],
-        stiinta: ['Va ateriza o misiune cu echipaj pe Lună?', 'Ce descoperiri importante sunt așteptate?'],
-        societate: ['Va crește salariul minim în România?', 'Cum va evolua șomajul în UE?'],
-        divertisment: ['Ce film va câștiga Oscarul?', 'Care va fi cel mai vizionat film al anului?'],
-        afaceri: ['Va crește numărul firmelor noi din România?', 'Cum va evolua finanțarea startup-urilor europene?'],
-        agricultura: ['Cum va evolua recolta de grâu din România?', 'Vor crește prețurile alimentelor în UE?'],
-        educatie: ['Va crește numărul studenților din România?', 'Cum va evolua cererea pentru cursuri de reconversie profesională?'],
-        turism: ['Va crește numărul turiștilor străini în România?', 'Cum vor evolua tarifele de cazare pe litoral?'],
-        transport: ['Ce tronsoane de autostradă ar putea fi deschise în România?', 'Va crește transportul feroviar de pasageri în UE?'],
-        mediu: ['Se va îmbunătăți calitatea aerului în București?', 'Va crește rata de reciclare a deșeurilor din România?'],
-        securitate_cibernetica: ['Cum va evolua numărul incidentelor ransomware raportate în UE?', 'Va crește adoptarea autentificării fără parolă?'],
-        justitie: ['Ce reglementări europene privind AI vor intra în aplicare?', 'Cum ar putea evolua regulile pentru comerțul online în UE?'],
-        auto: ['Va crește ponderea mașinilor electrice înmatriculate în România?', 'Cum va evolua rețeaua de stații de încărcare din UE?'],
-        industrie: ['Va crește producția industrială din România?', 'Cum vor evolua comenzile fabricilor europene?'],
-        comert: ['Vor crește vânzările online din România?', 'Cum va evolua încrederea consumatorilor din UE?'],
-        telecom: ['Cum va evolua acoperirea 5G în România?', 'Va crește accesul la internet prin satelit în Europa?'],
+        general: [['Va scădea inflația din România sub 5%?', 'ro'], ['Ce lansări importante în AI vor avea loc?']],
+        economie: [['Va scădea inflația din România sub 5%?', 'ro'], ['Va intra zona euro în recesiune?', 'eu']],
+        piete: [['Unde va fi cursul EUR/RON?', 'ro'], ['Va depăși Bitcoin maximul istoric?']],
+        tehnologie: [['Ce lansări importante în AI vor avea loc?'], ['Cum va evolua piața smartphone-urilor?']],
+        politica: [['Cine va câștiga următoarele alegeri?'], ['Va rămâne coaliția actuală la guvernare?']],
+        geopolitica: [['Va exista un armistițiu în Ucraina?', 'ua'], ['Cum vor evolua relațiile SUA–China?', 'global']],
+        energie: [['Cât va costa barilul de petrol Brent?'], ['Vor scădea facturile la energie în România?', 'ro']],
+        imobiliare: [['Vor crește prețurile apartamentelor în București?', 'ro'], ['Vor scădea dobânzile la creditele ipotecare?']],
+        clima: [['Va fi iarna mai caldă decât media?'], ['Va fi acest an cel mai cald înregistrat?']],
+        sanatate: [['Cum va evolua sezonul de gripă?'], ['Ce tratamente noi vor fi aprobate în UE?', 'eu']],
+        sport: [['Cine va câștiga Liga Campionilor?'], ['Se va califica România la Campionatul Mondial?', 'ro']],
+        stiinta: [['Va ateriza o misiune cu echipaj pe Lună?'], ['Ce descoperiri importante sunt așteptate?']],
+        societate: [['Va crește salariul minim în România?', 'ro'], ['Cum va evolua șomajul în UE?', 'eu']],
+        divertisment: [['Ce film va câștiga Oscarul?'], ['Care va fi cel mai vizionat film al anului?']],
+        afaceri: [['Va crește numărul firmelor noi din România?', 'ro'], ['Cum va evolua finanțarea startup-urilor europene?', 'eu']],
+        agricultura: [['Cum va evolua recolta de grâu din România?', 'ro'], ['Vor crește prețurile alimentelor în UE?', 'eu']],
+        educatie: [['Va crește numărul studenților din România?', 'ro'], ['Cum va evolua cererea pentru cursuri de reconversie profesională?']],
+        turism: [['Va crește numărul turiștilor străini în România?', 'ro'], ['Cum vor evolua tarifele de cazare pe litoral?']],
+        transport: [['Ce tronsoane de autostradă ar putea fi deschise în România?', 'ro'], ['Va crește transportul feroviar de pasageri în UE?', 'eu']],
+        mediu: [['Se va îmbunătăți calitatea aerului în București?', 'ro'], ['Va crește rata de reciclare a deșeurilor din România?', 'ro']],
+        securitate_cibernetica: [['Cum va evolua numărul incidentelor ransomware raportate în UE?', 'eu'], ['Va crește adoptarea autentificării fără parolă?']],
+        justitie: [['Ce reglementări europene privind AI vor intra în aplicare?', 'eu'], ['Cum ar putea evolua regulile pentru comerțul online în UE?', 'eu']],
+        auto: [['Va crește ponderea mașinilor electrice înmatriculate în România?', 'ro'], ['Cum va evolua rețeaua de stații de încărcare din UE?', 'eu']],
+        industrie: [['Va crește producția industrială din România?', 'ro'], ['Cum vor evolua comenzile fabricilor europene?', 'eu']],
+        comert: [['Vor crește vânzările online din România?', 'ro'], ['Cum va evolua încrederea consumatorilor din UE?', 'eu']],
+        telecom: [['Cum va evolua acoperirea 5G în România?', 'ro'], ['Va crește accesul la internet prin satelit în Europa?']],
       },
     },
     en: {
-      checkOrder: 'Check order status again', advancedOptions: 'Advanced options', private: 'Private forecast', exampleIntro: 'See what a forecast contains before ordering.', otherDomains: 'Choose a topic or write your own question',
+      checkOrder: 'Check order status again', advancedOptions: 'Advanced options', private: 'Private forecast', otherDomains: 'Choose a topic or write your own question',
       screenEmailMissing: 'Enter a valid email address to read the forecast for free.',
       openForecast: 'Open forecast', systemShare: 'More options', orderLink: 'View delivery status',
       paidTitle: 'Payment confirmed', orderWaiting: 'Awaiting payment confirmation', expiredTitle: 'Payment expired', refundTitle: 'Payment refund',
@@ -167,35 +175,39 @@
       firstCheckAfter: 'First check after', nextCheckAfter: 'Next check after',
       newChecks: n => n === 1 ? '1 new result' : `${n} new results`,
       tagline: 'Forecasts built from what is happening in the world right now',
-      viewExample: 'See a complete example',
+      viewExample: 'See a sample report', edit: 'Edit', yourQuestion: 'Your question', questionMin: 'Enter at least 5 characters.', tryExample: 'Try your own question', exploreDomain: 'Topic, region and period',
+      exampleChecks: 'With a real report, you can follow the question and return after the deadline to see which claims came true and the evidence for each verdict.',
+      sharePrivate: 'Anyone who receives this link can read the question and the report.', viewProgress: 'View progress',
+      declinedQuestion: 'Question declined', rephrase: 'Rephrase question', removedHistory: 'The report was removed from this browser. Its link still works.', removedEntry: 'The question was removed from this browser’s history.',
+      createForecast: 'Create a forecast', reloadReport: 'Reload report', reloadPage: 'Reload page',
       exampleLabel: 'Illustrative example', exampleNote: 'The data, institutions and sources are fictional. This example shows the result format; it is not a current forecast and requires no payment.',
       draftSaved: 'Form saved in this tab.', draftUnavailable: 'Your browser does not allow the form to be saved.', clearDraft: 'Clear form',
       personalTitle: 'My history', personalHint: 'Saved in this browser. Followed questions are updated when you return to the app.',
       historyAll: 'All', historyWatched: 'Followed questions', refreshChecks: 'Update results', personalEmpty: 'Forecasts you consult will appear here.', watchedEmpty: 'Follow a question from a forecast page.',
-      watchQuestion: 'Follow this question', unwatchQuestion: 'Stop following', removeHistory: 'Remove', pendingForecast: 'In progress', failedForecast: 'Forecast failed',
+      watchQuestion: 'Follow this question', unwatchQuestion: 'Stop following', removeHistory: 'Remove from my history', pendingForecast: 'In progress', failedForecast: 'Forecast failed',
       watchHint: 'Following is saved in this browser. We check for updates when you return; we do not send notifications or generate new forecasts automatically.',
       baseProbability: 'Base scenario probability',
       checkedCount: (n, total) => `${n}/${total} claims checked`, historyUpdated: 'Results have been updated.', historyOffline: 'Could not update. Your saved history is still available.', storageUnavailable: 'History cannot be saved in this browser.',
-      allDomains: 'All domains', allHorizons: 'All periods', allModels: 'All models', modelFilter: 'Model', mainModel: 'Main', liteModel: 'Fast', sampleSize: (n) => `Sample: ${n} resolved claims.`, smallSample: 'Small sample: results may vary substantially.',
+      allDomains: 'All domains', allHorizons: 'All periods', allModels: 'All models', modelFilter: 'Model', mainModel: 'Main', liteModel: 'Fast', smallSample: 'Small sample: results may vary substantially.',
       retryConnection: 'Retry connection', offline: 'You are offline. You can keep filling in the form; forecasts already started continue on the server.', reconnecting: 'The server connection was interrupted. Retrying automatically; your forecast continues on the server.', connectionUnavailable: 'The server connection was interrupted. You can retry without entering your question again.', trackUnavailable: 'Could not load the track record. Retry when the connection is restored.',
-      install: 'Install the app', astroButton: 'ASTRO-HOROSCOPE', stepDomain: 'Domain', stepQuestion: 'Your question', optional: '(optional)',
+      install: 'Install the app', astroButton: 'ASTRO-HOROSCOPE', stepDomain: 'Domain', stepQuestion: 'What would you like to know?', optional: '(optional)',
       questionPh: 'E.g.: Will euro area inflation fall below 2% by the end of the period?', examples: 'Example questions',
-      questionHint: 'Without a question, the oracle tells you what matters most to expect in the chosen domain and region.',
+      questionHint: 'Leave the question blank for an overview of your chosen topic.',
       stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language', effort: 'Oracle effort',
       publicNotice: 'Your question and forecast will be public and may appear in search engines.',
-      privateNotice: 'Your question and forecast are not publicly listed or indexed by search engines. Anyone with the link can view them.',
+      privateNotice: 'Anyone with the link can view it. Hidden from public listings and search engines.',
       fixedPrice: (p) => `The selected effort applies to the free quick forecast; the in-depth analysis (${p}) always uses high effort.`,
-      submit: 'Get the free quick forecast', freeHint: 'Free, on screen, no email: the complete report by the fast model, in about a minute.',
+      submit: 'Generate for free', freeHint: minutes => `Read your report on screen in about ${minutes === 1 ? 'one minute' : minutes + ' minutes'}.`,
       emailResult: (p) => `In-depth analysis — ${p}`,
       emailFee: (p) => `One-off payment: ${p}, no subscription. The result appears on screen and is also emailed to you.`,
       emailContinue: (p) => `Continue to payment — ${p}`,
-      emailExistingHint: 'The oracle redoes the forecast for the same question with its main model and high effort: more searches, pages read in full, about 2 minutes. If it fails, you are refunded automatically.',
+      emailExistingHint: 'We search more sources and analyse the same question in detail. In about 2 minutes you can read your report on screen and receive its link by email. If it fails, you are refunded automatically.',
       emailConfirmed: 'The email with your forecast link has been sent.',
-      payHint: (p) => `The oracle’s main model with high effort: more searches, pages read in full, about 2 minutes. You see the result on screen and also receive it by email. One-off payment of ${p} on Stripe’s secure page, no subscription. If the analysis cannot be produced, you are refunded automatically.`,
+      payHint: (p) => `We search more sources and analyse your question in detail. In about 2 minutes you can read your report on screen and receive its link by email. One-off payment of ${p} on Stripe’s secure page, no subscription. If the analysis cannot be produced, you are refunded automatically.`,
       toPayment: 'Taking you to the payment page…', confirming: 'Confirming your payment…',
       consent: 'I agree to the Terms and privacy policy and request immediate supply of the in-depth analysis (on screen and by email); I understand that once the paid service is supplied I can no longer withdraw from the contract.',
       readTerms: 'Read the terms', termsLink: 'Terms and privacy', contact: 'Contact',
-      screenEmail: 'Email (required for free viewing too)', deliveryOption: 'In-depth analysis (paid)',
+      screenEmail: 'Email (required for free viewing too)',
       emailLabel: 'Email address to receive your forecast', emailPh: 'name@example.com',
       emailMissing: 'Enter the email address where you want to receive the forecast.', emailInvalid: 'This email address does not look right.',
       consentMissing: 'Please tick the box accepting the terms before paying.',
@@ -203,13 +215,12 @@
       payExpired: 'The payment was not completed and the payment page has expired. You have not been charged.',
       payCanceled: 'The payment was canceled. You have not been charged.',
       refundedNote: 'The payment for this forecast was refunded automatically.',
-      duration: 'Usually takes 1–3 minutes: the oracle searches and reads current sources before answering.',
       trackTitle: 'The oracle’s track record', loading: 'Loading…', recentTitle: 'Recent forecasts',
       recentEmpty: 'No forecasts yet. Be the first to consult the oracle.',
       preparing: 'The oracle is getting ready…', notify: '🔔 Notify me when it’s ready', notifyOn: '🔔 We’ll notify you when it’s ready',
       leaveHint: 'You can keep this page open or come back later to the same link: the forecast will finish anyway.',
       share: 'Share', copyLink: 'Copy link', pdf: 'Save as PDF', newForecast: 'New forecast',
-      errorTitle: 'The oracle fell silent', tryAgain: 'Try again',
+      errorTitle: 'The oracle fell silent',
       disclaimer: 'Forecasts are probabilistic estimates generated automatically by artificial intelligence from public sources found at the time of the request. They are not certainties and are not financial, medical or legal advice.',
       phases: { queued: 'Waiting in line…', research: 'The oracle is searching the web…', writing: 'The oracle is writing the forecast…', repair: 'The oracle is putting its thoughts in order…', fallback: 'The oracle continues with the fast model…' },
       queuePos: (n) => `You are number ${n} in line.`,
@@ -224,34 +235,37 @@
         intro: 'The oracle checks its own forecasts: after each claim’s date, it looks up what actually happened and marks it true or false. This is where you will see how often it is right.',
         waiting: (n, d) => `${n} claims are waiting to be checked. First results: after ${d}.`, none: 'There are no claims to check yet.',
         correct: (c, n) => `correct forecasts (${c} of ${n})`, brier: 'Brier score (0 = perfect, 0.25 = coin flip)', pending: 'claims still pending',
-        calibration: 'Calibration', said: (r) => `Said ${r}`, happened: (a, n) => `happened ${a}% (${n})`, latest: 'Latest checks',
+        counts: (n, pending) => `${n} verified ${n === 1 ? 'claim' : 'claims'} · ${pending} pending`,
+        verdict: (p, outcome) => `Estimated at ${p}% · the event ${outcome ? 'happened' : 'did not happen'}`,
+        metrics: 'Success rate, Brier score and calibration', calibration: 'Calibration', said: (r) => `Said ${r}`, happened: (a, n) => `happened ${a}% (${n})`, latest: 'Latest checks',
       },
       examplesBy: {
-        economie: ['Will the euro area enter a recession?', 'Will the Fed cut interest rates?'],
-        piete: ['Where will EUR/USD trade?', 'Will Bitcoin hit a new all-time high?'],
-        tehnologie: ['Which major AI launches will happen?', 'How will the smartphone market evolve?'],
-        politica: ['Who will win the next election?', 'Will the current government survive?'],
-        geopolitica: ['Will there be a ceasefire in Ukraine?', 'How will US–China relations evolve?'],
-        energie: ['What will a barrel of Brent cost?', 'Will European gas prices fall?'],
-        imobiliare: ['Will house prices rise in my city?', 'Will mortgage rates go down?'],
-        clima: ['Will this winter be warmer than average?', 'Will this be the hottest year on record?'],
-        sanatate: ['How will the flu season evolve?', 'Which new treatments will be approved in the EU?'],
-        sport: ['Who will win the Champions League?', 'Who will win the next Grand Slam?'],
-        stiinta: ['Will a crewed mission land on the Moon?', 'Which major discoveries are expected?'],
-        societate: ['Will unemployment rise in the EU?', 'How will migration trends change?'],
-        divertisment: ['Which film will win the Oscar?', 'What will be the year’s biggest box office hit?'],
-        afaceri: ['Will the number of new businesses in Romania rise?', 'How will funding for European startups evolve?'],
-        agricultura: ['How will Romania’s wheat harvest evolve?', 'Will food prices rise in the EU?'],
-        educatie: ['Will university enrolment in Romania increase?', 'How will demand for professional retraining courses evolve?'],
-        turism: ['Will international tourist arrivals in Romania increase?', 'How will accommodation prices on the Romanian coast evolve?'],
-        transport: ['Which motorway sections could open in Romania?', 'Will rail passenger traffic increase in the EU?'],
-        mediu: ['Will air quality improve in Bucharest?', 'Will Romania’s waste recycling rate increase?'],
-        securitate_cibernetica: ['How will reported ransomware incidents in the EU evolve?', 'Will adoption of passwordless authentication increase?'],
-        justitie: ['Which European AI regulations will become applicable?', 'How might rules for online commerce in the EU evolve?'],
-        auto: ['Will the share of electric vehicles registered in Romania increase?', 'How will the EU charging station network evolve?'],
-        industrie: ['Will industrial production in Romania increase?', 'How will European manufacturing orders evolve?'],
-        comert: ['Will online retail sales in Romania increase?', 'How will EU consumer confidence evolve?'],
-        telecom: ['How will 5G coverage in Romania evolve?', 'Will satellite internet access expand in Europe?'],
+        general: [['Will the euro area enter a recession?', 'eu'], ['Which major AI launches are expected?']],
+        economie: [['Will the euro area enter a recession?', 'eu'], ['Will the Fed cut interest rates?', 'us']],
+        piete: [['Where will EUR/USD trade?'], ['Will Bitcoin hit a new all-time high?']],
+        tehnologie: [['Which major AI launches will happen?'], ['How will the smartphone market evolve?']],
+        politica: [['Who will win the next election?'], ['Will the current government survive?']],
+        geopolitica: [['Will there be a ceasefire in Ukraine?', 'ua'], ['How will US–China relations evolve?', 'global']],
+        energie: [['What will a barrel of Brent cost?'], ['Will European gas prices fall?', 'eu']],
+        imobiliare: [['Will house prices rise in my city?'], ['Will mortgage rates go down?']],
+        clima: [['Will this winter be warmer than average?'], ['Will this be the hottest year on record?']],
+        sanatate: [['How will the flu season evolve?'], ['Which new treatments will be approved in the EU?', 'eu']],
+        sport: [['Who will win the Champions League?'], ['Who will win the next Grand Slam?']],
+        stiinta: [['Will a crewed mission land on the Moon?'], ['Which major discoveries are expected?']],
+        societate: [['Will unemployment rise in the EU?', 'eu'], ['How will migration trends change?']],
+        divertisment: [['Which film will win the Oscar?'], ['What will be the year’s biggest box office hit?']],
+        afaceri: [['Will the number of new businesses in Romania rise?', 'ro'], ['How will funding for European startups evolve?', 'eu']],
+        agricultura: [['How will Romania’s wheat harvest evolve?', 'ro'], ['Will food prices rise in the EU?', 'eu']],
+        educatie: [['Will university enrolment in Romania increase?', 'ro'], ['How will demand for professional retraining courses evolve?']],
+        turism: [['Will international tourist arrivals in Romania increase?', 'ro'], ['How will accommodation prices on the Romanian coast evolve?', 'ro']],
+        transport: [['Which motorway sections could open in Romania?', 'ro'], ['Will rail passenger traffic increase in the EU?', 'eu']],
+        mediu: [['Will air quality improve in Bucharest?', 'ro'], ['Will Romania’s waste recycling rate increase?', 'ro']],
+        securitate_cibernetica: [['How will reported ransomware incidents in the EU evolve?', 'eu'], ['Will adoption of passwordless authentication increase?']],
+        justitie: [['Which European AI regulations will become applicable?', 'eu'], ['How might rules for online commerce in the EU evolve?', 'eu']],
+        auto: [['Will the share of electric vehicles registered in Romania increase?', 'ro'], ['How will the EU charging station network evolve?', 'eu']],
+        industrie: [['Will industrial production in Romania increase?', 'ro'], ['How will European manufacturing orders evolve?', 'eu']],
+        comert: [['Will online retail sales in Romania increase?', 'ro'], ['How will EU consumer confidence evolve?']],
+        telecom: [['How will 5G coverage in Romania evolve?', 'ro'], ['Will satellite internet access expand in Europe?']],
       },
     },
   };
@@ -268,9 +282,10 @@
       resolutionCriteria: 'Criteriu de verificare',
       published: 'Publicată la', dateUnknown: 'Dată de publicare neprecizată', noClaimSources: 'Nu sunt disponibile surse asociate acestei afirmații.',
       claimDetails: 'Argument și criteriu de verificare', claimSources: 'Surse pentru această afirmație',
+      coverage: (n, total) => `Afirmații cu surse asociate: ${n} din ${total}.`,
+      contextSourcesOnly: 'Surse disponibile pentru contextul general.', noSources: 'Raportul nu conține surse.',
       generalSources: 'Vezi sursele generale (neasociate acestei afirmații)',
       sourcesHint: 'Sursele de mai jos oferă context pentru analiză. Doar trimiterile de lângă fiecare afirmație indică sursele asociate acesteia; ele susțin argumentul, nu garantează rezultatul.',
-      missingSources: (n) => `${n} afirmații nu au surse asociate. Lista generală nu dovedește automat fiecare afirmație.`,
       supportsClaims: 'Asociată afirmațiilor', contextOnly: 'Context general; fără asociere la o afirmație',
       quatrain: 'Catrenul oracolului',
       check: { pending: 'Se verifică după', true: 'S-a adeverit', false: 'Nu s-a adeverit', unresolved: 'Încă nelămurit' },
@@ -287,9 +302,10 @@
       resolutionCriteria: 'Resolution criteria',
       published: 'Published', dateUnknown: 'Publication date unavailable', noClaimSources: 'No sources are associated with this claim.',
       claimDetails: 'Reasoning and resolution criteria', claimSources: 'Sources for this claim',
+      coverage: (n, total) => `Claims with linked sources: ${n} of ${total}.`,
+      contextSourcesOnly: 'Sources are available for general context only.', noSources: 'This report has no sources.',
       generalSources: 'View general sources (not linked to this claim)',
       sourcesHint: 'The sources below provide context for the analysis. Only references beside each claim identify sources associated with it; they support the reasoning, not a guaranteed outcome.',
-      missingSources: (n) => `${n} claims have no associated sources. The general list does not automatically substantiate each claim.`,
       supportsClaims: 'Associated with claims', contextOnly: 'General context; not associated with a claim',
       quatrain: 'The oracle’s quatrain',
       check: { pending: 'Checked after', true: 'Came true', false: 'Did not come true', unresolved: 'Not settled yet' },
@@ -310,6 +326,7 @@
     set: (k, v) => { try { sessionStorage.setItem(k, v); return true; } catch { return false; } },
     del: (k) => { try { sessionStorage.removeItem(k); } catch { /* indisponibil */ } },
   };
+  let draftKey = sessionStore.get('active-form') || 'form';
   eta = Number(sessionStore.get('eta')) || eta;
   let ui = store.get('ui') || ((navigator.language || 'ro').toLowerCase().startsWith('ro') ? 'ro' : 'en');
   const tr = (key) => U[ui][key];
@@ -320,7 +337,9 @@
     for (const id of ['astro-switch', 'astro-header']) $(`#${id}`).href = astro;
     document.querySelectorAll('[data-i18n]').forEach((n) => { n.textContent = tr(n.dataset.i18n); });
     const pay = catalog?.payment;
+    $('#free-hint').textContent = tr('freeHint')(catalog?.freeTier === 'main' ? 2 : 1);
     if (pay?.required) {
+      $('#delivery-option').textContent = tr('emailResult')(pay.price);
       $('#email-result').textContent = tr('emailResult')(pay.price);
       $('#result-email-label').textContent = tr('emailFee')(pay.price);
       for (const id of ['submit-email', 'result-submit-email']) $(`#${id}`).textContent = tr('emailContinue')(pay.price);
@@ -433,20 +452,22 @@
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     formVisit = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
     const device = matchMedia('(max-width: 640px)').matches ? 'mobile' : 'desktop';
-    visitRegistration = visitEvent({ event: 'visit', id: formVisit, device }).catch(() => {});
+    visitRegistration = visitEvent({ event: 'visit', id: formVisit, device, layout: 'question-first' }).catch(() => {});
   }
 
-  async function recordDisplay(id, visit) {
+  async function recordDisplay(id, marker) {
+    const free = marker.startsWith('free:');
+    const visit = free ? marker.slice(5) : marker;
     try {
       if (visit === formVisit) await visitRegistration;
-      const result = await visitEvent({ event: 'display', id: visit });
-      if (result.ok && sessionStore.get('visit-report-' + id) === visit) sessionStore.del('visit-report-' + id);
+      const result = await visitEvent({ event: 'display', id: visit, free });
+      if (result.ok && sessionStore.get('visit-report-' + id) === marker) sessionStore.del('visit-report-' + id);
     } catch { /* Reîncercăm la următoarea afișare a raportului. */ }
   }
 
   // ---------- formular ----------
   // Domeniile din grila originală. Cataloagele extinse apar la „Alt domeniu”.
-  const gridDomains = new Set(['economie', 'piete', 'tehnologie', 'politica', 'geopolitica', 'energie',
+  const gridDomains = new Set(['general', 'economie', 'piete', 'tehnologie', 'politica', 'geopolitica', 'energie',
     'imobiliare', 'clima', 'sanatate', 'sport', 'stiinta', 'societate', 'divertisment', 'altul']);
 
   function buildForm() {
@@ -481,7 +502,14 @@
     region.replaceChildren(...catalog.regions.map((r) => el('option', { value: r.id, text: r[ui] })));
     region.value = reg;
     renderAdvancedSummary();
+    renderContextSummary();
     renderExamples();
+  }
+
+  function renderContextSummary() {
+    if (!catalog) return;
+    const horizon = document.querySelector('input[name=horizon]:checked')?.value;
+    $('#context-summary').textContent = [label(catalog.domains, currentDomain()), label(catalog.regions, $('#region').value), label(catalog.horizons, horizon)].join(' · ');
   }
 
   function currentEffort() {
@@ -516,12 +544,24 @@
   }
 
   function renderExamples() {
+    const custom = currentDomain() === 'altul';
+    const question = $('#question');
+    question.required = custom;
+    question.minLength = custom ? 5 : 0;
+    $('#question-min').hidden = !custom;
+    if (custom) question.setAttribute('aria-describedby', 'question-min');
+    else question.removeAttribute('aria-describedby');
+    $('#question-title').textContent = tr(custom ? 'yourQuestion' : 'stepQuestion');
+    $('#question-optional').hidden = custom;
+    $('.context-hint').hidden = custom;
     const box = $('#examples');
     box.replaceChildren();
-    (tr('examplesBy')[currentDomain()] || []).forEach((text) => {
+    (tr('examplesBy')[currentDomain()] || []).forEach(([text, region]) => {
       const b = el('button', { type: 'button', class: 'example', text });
       b.addEventListener('click', () => {
         const q = $('#question');
+        if (region) $('#region').value = region;
+        renderContextSummary();
         q.value = text;
         q.dispatchEvent(new Event('input', { bubbles: true }));
         q.focus();
@@ -542,7 +582,7 @@
     });
     setConnection('connected');
     if (res.etaSec) { eta = res.etaSec; sessionStore.set('eta', String(eta)); }
-    if (formVisit && !$('#view-form').hidden) sessionStore.set('visit-report-' + res.id, formVisit);
+    if (formVisit && !$('#view-form').hidden) sessionStore.set('visit-report-' + res.id, 'free:' + formVisit);
     library.pending(res.id, body);
     history.pushState({}, '', `/p/${res.id}`);
     follow(res.id);
@@ -560,6 +600,7 @@
     $('#order-refresh').hidden = !state.retryStatus;
     const link = $('#order-report');
     link.hidden = !state.canOpen;
+    link.textContent = tr(state.message === 'generating' ? 'viewProgress' : 'openForecast');
     if (state.canOpen) link.href = '/p/' + encodeURIComponent(orderState.predictionId);
     else link.removeAttribute('href');
     return state;
@@ -599,9 +640,9 @@
     await refresh();
   }
 
-  function restoreForm() {
-    let body = null;
-    try { body = JSON.parse(sessionStore.get('form') || 'null'); } catch { /* ignorăm */ }
+  function restoreForm(request) {
+    let body = request;
+    try { body ??= JSON.parse(sessionStore.get(draftKey) || 'null'); } catch { /* ignorăm */ }
     if (!body || typeof body !== 'object') return;
     restoringDraft = true;
     const check = (name, value) => { const i = [...document.getElementsByName(name)].find(input => input.value === value); if (i) i.checked = true; };
@@ -609,14 +650,16 @@
     check('horizon', body.horizon);
     check('effort', body.effort);
     if (body.region) $('#region').value = body.region;
-    if (body.lang) { $('#lang').value = body.lang; answerLangChosen = true; }
+    if (body.lang) { answerLangChosen = body.answerLangChosen ?? true; $('#lang').value = answerLangChosen ? body.lang : ui; }
     $('#question').value = body.question || '';
     $('#question').dispatchEvent(new Event('input'));
     $('#private').checked = body.visibilityChoice !== 'public';
     renderVisibility();
-    if (body.email) $('#email').value = body.email;
+    $('#email').value = body.email || '';
     $('#consent').checked = false;
     $('#advanced-options').open = body.advancedOpen === true;
+    $('#forecast-context').open = body.contextOpen === true;
+    renderContextSummary();
     renderExamples();
     renderEffortHint();
     restoringDraft = false;
@@ -636,14 +679,22 @@
 
   function saveDraft(body = formBody()) {
     if (!catalog || restoringDraft) return;
-    draftSaved = sessionStore.set('form', JSON.stringify({ ...body, consent: undefined, visibilityChoice: body.private === false ? 'public' : 'unlisted', advancedOpen: $('#advanced-options').open }));
+    draftSaved = sessionStore.set(draftKey, JSON.stringify({ ...body, answerLangChosen, consent: undefined, visibilityChoice: body.private === false ? 'public' : 'unlisted', contextOpen: $('#forecast-context').open, advancedOpen: $('#advanced-options').open }));
     $('#draft-status').textContent = tr(draftSaved ? 'draftSaved' : 'draftUnavailable');
     $('#reset-form').hidden = !draftSaved;
   }
 
+  function validQuestion() {
+    if (currentDomain() !== 'altul' || $('#question').value.trim().replace(/\s+/g, ' ').length >= 5) return true;
+    $('#form-error').textContent = tr('questionMin');
+    $('#form-error').hidden = false;
+    $('#question').focus();
+    return false;
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
-    if (submitting) return;
+    if (submitting || $('#submit').disabled || !validQuestion()) return;
     saveDraft();
     const err = $('#form-error');
     err.hidden = true;
@@ -669,11 +720,14 @@
 
   function setSubmitting(value) {
     submitting = value;
-    for (const id of ['submit', 'submit-email', 'result-submit-email']) $(`#${id}`).disabled = value;
+    for (const id of ['submit', 'submit-email', 'result-submit-email']) {
+      $(`#${id}`).disabled = value || !catalog || offlineCatalog || navigator.onLine === false;
+    }
   }
 
   async function submitEmail(fromResult = false) {
-    if (submitting || !catalog?.payment?.required) return;
+    if (submitting || !catalog?.payment?.required || $('#submit-email').disabled) return;
+    if (!fromResult && !validQuestion()) return;
     const rec = fromResult ? current : null;
     if (fromResult && (!rec || rec.example || rec.prediction.declined)) return;
     const prefix = fromResult ? 'result-' : '';
@@ -829,7 +883,12 @@
     });
   }
 
-  function fail(msg) {
+  function fail(msg, action = 'createForecast') {
+    const link = $('#error-action');
+    link.dataset.i18n = action;
+    link.textContent = tr(action);
+    link.href = action === 'createForecast' ? '/' : location.pathname + location.search;
+    link.toggleAttribute('data-nav', action !== 'reloadPage');
     $('#error-msg').textContent = msg;
     document.title = tr('defaultTitle');
     show('error');
@@ -854,7 +913,7 @@
     } catch (ex) {
       if (location.pathname.replace(/\/$/, '') !== `/p/${id}`) return;
       if (ex.network) setConnection(navigator.onLine === false ? 'offline' : 'reconnecting');
-      fail(ex.message);
+      fail(ex.message, ex.status === 404 ? 'createForecast' : 'reloadReport');
     }
   }
 
@@ -974,17 +1033,10 @@
       meta.tier === 'lite' ? el('span', { class: 'tag', title: t.liteNote, text: `⚡ ${t.liteTag}` }) : null);
 
     if (p.declined) {
-      root.append(el('section', { class: 'card declined' }, tags, el('h1', { text: t.declinedTitle }), el('p', { text: p.declined_reason || p.summary }),
+      root.append(el('section', { class: 'card declined' }, tags, el('h1', { text: t.declinedTitle }), el('p', { text: p.declined_reason || p.summary }), rephraseButton(rq),
         rec.refunded ? el('p', { class: 'muted', text: tr('refundedNote') }) : null));
       return;
     }
-
-    root.append(el('section', { class: 'card r-head' },
-      tags,
-      el('h1', { text: p.title }),
-      rq.question ? el('p', { class: 'muted', text: `„${rq.question}”` }) : null,
-      el('p', { class: 'r-summary', text: p.summary }),
-      confidenceDots(p.confidence, t)));
 
     // Numerotare comună pentru trimiterile pe afirmații și lista generală, fără asocieri deduse.
     const sourceMap = new Map();
@@ -993,7 +1045,17 @@
     }
     const sources = [...sourceMap.values()];
     const missing = p.predictions.filter(claim => !claim.sources?.length).length;
-
+    const linked = p.predictions.length - missing;
+    const coverage = linked ? t.coverage(linked, p.predictions.length) : sources.length ? t.contextSourcesOnly : t.noSources;
+    root.append(el('section', { class: 'card r-head' },
+      tags,
+      el('h1', { text: p.title }),
+      rq.question ? el('p', { class: 'muted', text: `„${rq.question}”` }) : null,
+      el('p', { class: 'r-summary', text: p.summary }),
+      confidenceDots(p.confidence, t),
+      el('p', { class: 'hint source-coverage' }, sources.length ? sourceJump(coverage) : coverage),
+      reportAction(rec)));
+    renderWatchButton();
 
     if (p.predictions.length) {
       root.append(card(t.predictions, el('ul', { class: 'preds' }, p.predictions.map((x, i) => {
@@ -1014,9 +1076,6 @@
           details));
       }))));
     }
-
-    if (missing) root.append(el('aside', { class: 'card evidence-notice' },
-      el('p', { text: t.missingSources(missing) }), sources.length ? sourceJump(t.sources) : null));
 
     if (p.scenarios.length) {
       root.append(foldCard(t.scenarios, el('div', { class: 'scenarios' }, p.scenarios.map((s) => {
@@ -1080,10 +1139,11 @@
       current = rec;
       renderPrediction(rec); setupShare(rec); show('result');
       document.title = `${tr('exampleLabel')} — Nostradamus`;
-    } catch (ex) { if (location.pathname !== '/exemplu' || ui !== language) return; if (ex.network) setConnection('reconnecting'); fail(ex.message); }
+    } catch (ex) { if (location.pathname !== '/exemplu' || ui !== language) return; if (ex.network) setConnection('reconnecting'); fail(ex.message, 'reloadReport'); }
   }
 
   function renderConnection() {
+    setSubmitting(submitting);
     $('#network-warning').hidden = networkState === 'connected';
     $('#network-message').textContent = networkState === 'connected' ? '' : tr(networkState === 'reconnecting' && !currentPredictionId ? 'connectionUnavailable' : networkState);
   }
@@ -1092,11 +1152,48 @@
 
   function renderWatchButton() {
     const button = $('#watch-result');
-    button.hidden = !current || current.example || current.prediction.declined;
-    const watched = current && library.get(current.id)?.watched;
+    if (!button || !current) return;
+    const watched = library.get(current.id)?.watched;
     button.textContent = tr(watched ? 'unwatchQuestion' : 'watchQuestion');
     button.setAttribute('aria-pressed', String(!!watched));
-    $('#watch-hint').hidden = button.hidden;
+  }
+
+  function reportAction(rec) {
+    if (rec.example) {
+      return el('div', { class: 'report-action' },
+        el('a', { class: 'btn-ghost', href: '/', 'data-nav': true, 'data-focus-question': true, text: tr('tryExample') }),
+        el('p', { class: 'hint', text: tr('exampleChecks') }));
+    }
+    const button = el('button', { id: 'watch-result', class: 'btn-ghost', type: 'button', 'aria-describedby': 'watch-hint' });
+    button.addEventListener('click', () => {
+      library.remember(rec);
+      library.toggle(rec.id);
+      renderWatchButton();
+      renderLibrary();
+      if (!library.persistent) toast(tr('storageUnavailable'));
+    });
+    const hasChecks = rec.checks?.some(check => check.status !== 'pending');
+    return el('div', { class: 'report-action' }, button,
+      rec.nextCheckAt ? el('p', { class: 'hint', text: tr(hasChecks ? 'nextCheckAfter' : 'firstCheckAfter') + ' ' + fmtDate(rec.nextCheckAt) }) : null,
+      el('p', { class: 'hint', id: 'watch-hint', text: tr('watchHint') }));
+  }
+
+  function rephrase(request) {
+    if (location.pathname !== '/') {
+      history.pushState({}, '', '/');
+      route();
+    }
+    restoreForm({ ...request, visibilityChoice: request.private ? 'unlisted' : 'public' });
+    saveDraft();
+    $('#form-error').hidden = true;
+    $('#email-error').hidden = true;
+    $('#question').focus();
+  }
+
+  function rephraseButton(request) {
+    const button = el('button', { type: 'button', class: 'btn-small', text: tr('rephrase') });
+    button.addEventListener('click', () => rephrase(request));
+    return button;
   }
 
   function renderLibrary() {
@@ -1105,18 +1202,29 @@
     $('#library-watched').setAttribute('aria-pressed', String(libraryFilter === 'watched'));
     const entries = library.list().filter(e => libraryFilter !== 'watched' || e.watched);
     $('#personal-list').replaceChildren(...entries.map(e => {
-      const followButton = el('button', { type: 'button', class: 'btn-small', text: tr(e.watched ? 'unwatchQuestion' : 'watchQuestion'), 'aria-pressed': String(e.watched) });
-      followButton.addEventListener('click', () => { library.toggle(e.id); renderLibrary(); renderWatchButton(); });
+      let action;
+      if (e.status === 'declined') {
+        action = rephraseButton(e.request);
+      } else {
+        action = el('button', { type: 'button', class: 'btn-small', text: tr(e.watched ? 'unwatchQuestion' : 'watchQuestion'), 'aria-pressed': String(e.watched) });
+        action.addEventListener('click', () => { library.toggle(e.id); renderLibrary(); renderWatchButton(); });
+      }
       const remove = el('button', { type: 'button', class: 'btn-small', text: tr('removeHistory') });
-      remove.addEventListener('click', () => { library.remove(e.id); renderLibrary(); renderWatchButton(); });
+      remove.addEventListener('click', () => {
+        library.remove(e.id);
+        renderLibrary();
+        renderWatchButton();
+        toast(tr(e.status === 'done' || e.status === 'declined' ? 'removedHistory' : 'removedEntry'));
+      });
       const evolution = e.trend.length > 1 ? e.trend.map(p => `${p}%`).join(' → ') : e.base !== null ? `${e.base}%` : '';
-      const state = e.status === 'pending' ? tr('pendingForecast') : e.status === 'error' ? tr('failedForecast') : tr('checkedCount')(e.resolved, e.total);
+      const statusLabel = { pending: 'pendingForecast', error: 'failedForecast', declined: 'declinedQuestion' }[e.status];
+      const state = statusLabel ? tr(statusLabel) : tr('checkedCount')(e.resolved, e.total);
       return el('li', {}, el('a', { href: `/p/${e.id}`, 'data-nav': true, class: 'personal-title', text: e.title || label(catalog.domains, e.request.domain) }),
         el('p', { class: 'hint', text: [fmtShort(e.createdAt), e.request.private ? '🔒' : '', state].filter(Boolean).join(' · ') }),
         e.watched && e.nextCheck ? el('p', { class: 'hint', text: `${tr(e.checkedBefore ? 'nextCheckAfter' : 'firstCheckAfter')} ${fmtShort(e.nextCheck)}` }) : null,
         e.watched && e.resolved > e.seenResolved ? el('strong', { text: tr('newChecks')(e.resolved - e.seenResolved) }) : null,
         evolution ? el('p', { class: 'hint history-probability', text: `${tr('baseProbability')}: ${evolution}${e.baseName ? ` — ${e.baseName}` : ''}` }) : null,
-        el('div', { class: 'personal-tools' }, followButton, remove));
+        el('div', { class: 'personal-tools' }, action, remove));
     }));
     $('#personal-empty').hidden = entries.length > 0;
     $('#personal-empty').textContent = tr(libraryFilter === 'watched' ? 'watchedEmpty' : 'personalEmpty');
@@ -1183,6 +1291,7 @@
   function setupShare(rec) {
     renderEmailAction();
     $('#share-options').hidden = !!rec.example;
+    $('#share-private').hidden = rec.example || !rec.request.private;
     renderWatchButton();
     if (rec.example) { $('#share').hidden = true; return; }
     const url = `${location.origin}/p/${rec.id}`;
@@ -1208,7 +1317,7 @@
       if (!$('#view-form').hidden) setConnection('connected');
       if (!data.resolved) {
         box.replaceChildren(
-          el('p', { text: tr('sampleSize')(0) }), el('p', { text: T.intro }),
+          el('strong', { text: T.counts(0, data.pending) }), el('p', { text: T.intro }),
           el('p', { class: 'muted', text: data.pending ? T.waiting(data.pending, fmtDate(data.nextCheck)) : T.none }));
         return;
       }
@@ -1225,13 +1334,15 @@
           el('span', { class: 'bar' }, bar),
           el('span', { class: 'cal-actual', text: T.happened(b.actual, b.count) }));
       });
-      box.replaceChildren(stats,
-        el('p', { class: 'hint', text: `${tr('sampleSize')(data.resolved)}${data.resolved < 30 ? ` ${tr('smallSample')}` : ''}` }),
-        rows.length ? el('div', {}, el('h3', { text: T.calibration }), el('ul', { class: 'calibration' }, rows)) : null,
+      box.replaceChildren(
+        el('strong', { text: T.counts(data.resolved, data.pending) }),
+        data.resolved < 30 ? el('p', { class: 'hint', text: tr('smallSample') }) : null,
+        el('details', { class: 'track-metrics', open: data.resolved >= 30 },
+          el('summary', { text: T.metrics }), stats,
+          rows.length ? el('div', {}, el('h3', { text: T.calibration }), el('ul', { class: 'calibration' }, rows)) : null),
         data.recent.length ? el('div', {}, el('h3', { text: T.latest }), el('ul', { class: 'checked-list' }, data.recent.map((r) => el('li', {},
-          el('span', { class: r.outcome ? 'ok' : 'ko', text: r.outcome ? '✓ ' : '✗ ' }),
           el('a', { href: `/p/${r.id}`, 'data-nav': true, text: r.claim }),
-          el('span', { class: 'muted', text: ` — ${r.probability}%` }))))) : null);
+          el('span', { class: 'muted', text: ' — ' + T.verdict(r.probability, r.outcome) }))))) : null);
     } catch {
       if (request === trackRequest) box.replaceChildren(el('p', { class: 'muted', text: tr('trackUnavailable') }));
     }
@@ -1268,18 +1379,33 @@
         toast(tr('payCanceled'));
       }
       follow(m[1]);
+    } else if (location.pathname.startsWith('/p/')) {
+      fail(tr('missing'));
     } else if (pay) {
       confirmPayment(pay[1]);
     } else {
-      if (new URLSearchParams(location.search).has('anulat')) {
-        history.replaceState({}, '', '/');
+      const params = new URLSearchParams(location.search);
+      if (params.has('new')) {
+        draftKey = 'form-' + crypto.randomUUID();
+        clearForm();
+      } else if (history.state?.draftKey && history.state.draftKey !== draftKey) {
+        draftKey = history.state.draftKey;
+        clearForm();
+        restoreForm();
+      }
+      sessionStore.set('active-form', draftKey);
+      const cancelled = params.has('anulat');
+      history.replaceState({ ...history.state, draftKey }, '', params.has('new') || cancelled ? '/' : location.href);
+      if (cancelled) {
         restoreForm();
         toast(tr('payCanceled'));
       }
       document.title = tr('defaultTitle');
       show('form');
+      renderLibrary();
+      if (offlineCatalog || navigator.onLine === false) return;
       startFormVisit();
-      renderLibrary(); refreshLibrary();
+      refreshLibrary();
       loadTrack();
       loadRecent();
     }
@@ -1290,8 +1416,9 @@
     if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
     e.preventDefault();
     if (!$('#view-form').hidden) saveDraft();
-    history.pushState({}, '', a.getAttribute('href'));
+    if (a.pathname + a.search !== location.pathname + location.search) history.pushState({}, '', a.getAttribute('href'));
     route();
+    if (a.hasAttribute('data-focus-question') || a.dataset.i18n === 'newForecast') $('#question').focus();
   });
   window.addEventListener('popstate', route);
 
@@ -1344,20 +1471,16 @@
     for (const [node, open] of printDetails) node.open = open;
     printDetails = [];
   });
-  $('#watch-result').addEventListener('click', () => {
-    if (!current || current.example) return;
-    library.remember(current); library.toggle(current.id); renderWatchButton(); renderLibrary();
-    if (!library.persistent) toast(tr('storageUnavailable'));
-  });
   $('#library-all').addEventListener('click', () => { libraryFilter = 'all'; renderLibrary(); });
   $('#library-watched').addEventListener('click', () => { libraryFilter = 'watched'; renderLibrary(); });
   $('#library-refresh').addEventListener('click', () => refreshLibrary({ all: true }));
   for (const name of ['domain', 'horizon', 'tier']) $(`#track-${name}`).addEventListener('change', loadTrack);
   $('#form').addEventListener('input', () => saveDraft());
-  $('#form').addEventListener('change', () => { renderAdvancedSummary(); saveDraft(); });
-  $('#advanced-options').addEventListener('toggle', () => { if (draftSaved) saveDraft(); });
-  $('#reset-form').addEventListener('click', () => {
-    sessionStore.del('form');
+  $('#form').addEventListener('change', () => { renderContextSummary(); renderAdvancedSummary(); saveDraft(); });
+  for (const id of ['advanced-options', 'forecast-context']) {
+    $(`#${id}`).addEventListener('toggle', () => { if (draftSaved) saveDraft(); });
+  }
+  function clearForm() {
     $('#form').reset();
     selectDomain(catalog.domains[0].id);
     $('#email-options').open = false;
@@ -1370,16 +1493,22 @@
     $('#question').value = ''; $('#qcount').textContent = '0/500'; $('#email').value = '';
     answerLangChosen = false; $('#lang').value = ui; $('#advanced-options').open = false;
     draftSaved = false; $('#draft-status').textContent = ''; $('#reset-form').hidden = true;
-    renderEffortHint(); renderExamples(); renderVisibility();
+    $('#forecast-context').open = false;
+    $('#private').checked = true;
+    renderEffortHint(); renderExamples(); renderVisibility(); renderContextSummary();
+  }
+  $('#reset-form').addEventListener('click', () => {
+    sessionStore.del(draftKey);
+    clearForm();
   });
   $('#retry-connection').addEventListener('click', () => {
-    if (!catalog) bootstrap();
+    if (!catalog || offlineCatalog) bootstrap();
     else route();
   });
   window.addEventListener('offline', () => { saveDraft(); setConnection('offline'); });
   window.addEventListener('online', () => {
     setConnection('connected');
-    if (!catalog) bootstrap();
+    if (!catalog || offlineCatalog) bootstrap();
     else if (currentPredictionId && !$('#view-progress').hidden) follow(currentPredictionId);
     else if (!$('#view-form').hidden) { refreshLibrary(); loadTrack(); }
   });
@@ -1434,11 +1563,32 @@
   $('#result-email-form').addEventListener('submit', (event) => { event.preventDefault(); submitEmail(true); });
 
 
-  function bootstrap() {
-    api('/api/catalog', { cache: 'no-cache' }).then((c) => {
-      catalog = c; applyUi(); buildForm(); restoreForm();
-      setConnection(navigator.onLine === false ? 'offline' : 'connected'); route();
-    }).catch(() => { setConnection(navigator.onLine === false ? 'offline' : 'reconnecting'); fail(tr('loadFail')); });
+  async function bootstrap() {
+    if (loadingCatalog) return;
+    loadingCatalog = true;
+    try {
+      let config;
+      try {
+        config = await api('/api/catalog', { cache: 'no-cache' });
+        store.set('nostra.public-catalog.v1', JSON.stringify(config));
+        offlineCatalog = false;
+      } catch (err) {
+        config = JSON.parse(store.get('nostra.public-catalog.v1') || 'null');
+        if (!config || location.pathname !== '/') throw err;
+        offlineCatalog = true;
+      }
+      catalog = config;
+      applyUi();
+      buildForm();
+      restoreForm();
+      setConnection(offlineCatalog ? 'reconnecting' : 'connected');
+      route();
+    } catch {
+      setConnection('reconnecting');
+      fail(tr('loadFail'), 'reloadPage');
+    } finally {
+      loadingCatalog = false;
+    }
   }
   bootstrap();
 })();

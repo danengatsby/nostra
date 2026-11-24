@@ -18,7 +18,7 @@ După data fiecărei afirmații, oracolul **își verifică singur previziunile*
 marchează afirmația ca adevărată, falsă sau încă nelămurită, cu dovada și sursa. Prima pagină arată palmaresul:
 procentul de previziuni corecte, scorul Brier și calibrarea (dintre afirmațiile date cu 70–79%, câte s-au adeverit).
 
-**Previziunea rapidă, gratuită:** butonul „Vezi gratuit previziunea rapidă” generează raportul complet cu modelul
+**Previziunea rapidă, gratuită:** butonul „Generează gratuit” generează raportul complet cu modelul
 rapid (Claude Haiku 5.5, ~0,05 $, ~35 s), pe ecran, fără email, acord sau plată, din bugetul zilnic
 `FALLBACK_DAILY_USD`. Se aplică limitele de cereri. Când bugetul gratuit de azi s-a epuizat, mesajul amintește
 de analiza plătită, disponibilă oricând. (`FREE_TIER=main` revine la vechiul mod: gratuit pe modelul principal
@@ -46,11 +46,9 @@ service worker-ul exclude paginile previziunilor și răspunsurile care interzic
 Formularul are opțiunile de efort și limbă într-o secțiune pliabilă. Un exemplu complet, bilingv și marcat
 ca fictiv poate fi consultat gratuit la `/exemplu`, fără apel AI și fără comandă. Formularul se salvează
 automat în `sessionStorage`, fără acordul bifat; rămâne disponibil la reîncărcare și după revenirea de la plată.
-La pierderea conexiunii apare un mesaj explicit, iar progresul se recuperează prin SSE și verificarea stării.
+După o primă încărcare online, formularul poate folosi catalogul public păstrat în browser pentru a permite editarea ciornei offline. Generarea și plata se reactivează după reconectare. La pierderea conexiunii apare un mesaj explicit, iar progresul se recuperează prin SSE și verificarea stării.
 
-Formularul începe cu exemplul complet, apoi prezintă grila de domenii, întrebarea și perioada. „Alt domeniu” include categoriile suplimentare. Regiunea se alege sub perioadă, iar efortul și limba se aleg din „Opțiuni avansate”. După plată, linkul comenzii afișează
-confirmarea, starea livrării actualizată automat și accesul la previziune. Raportul prezintă
-afirmațiile imediat după rezumat și acțiunile la final. Trimiterile
+Formularul începe cu întrebarea. Domeniul implicit este „General”. Domeniul, regiunea și perioada pot fi editate lângă întrebare. „O nouă previziune” pornește un formular gol și privat. Exemplele cu regiune predefinită actualizează selecția. După plată, linkul comenzii afișează progresul și apoi raportul final. Din rezumatul exemplului se poate începe o întrebare proprie. Într-un raport real, urmărirea și următoarea dată eligibilă pentru verificare apar lângă rezumat. Trimiterile
 numerotate leagă afirmațiile de sursele lor; sursele generale fără asociere sunt marcate ca informații de
 context. Istoricul etichetează probabilitatea scenariului de bază și păstrează numele acestuia când e disponibil.
 
@@ -96,7 +94,7 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
   se păstrează: întrebările cu `<` și `>` sau `+` și `-` au cache separat. Cheile v2 invalidează cache-ul vechi;
   previziunile existente rămân accesibile prin link, iar istoricul se grupează după cererea originală.
   Răspunsul brut al modelului se păstrează în `data/raw/`.
-- **Domenii și perioade** (`lib/catalog.js`) – 26 de domenii (economie, burse și cripto, tehnologie și AI,
+- **Domenii și perioade** (`lib/catalog.js`) – 27 de domenii (general, economie, burse și cripto, tehnologie și AI,
   politică, geopolitică, energie, imobiliare, climă, sănătate, sport, știință, societate, divertisment,
   afaceri, agricultură și alimentație, educație, turism, transport și infrastructură, mediu, securitate
   cibernetică, justiție și reglementări, auto și mobilitate, industrie, comerț și consum, telecomunicații, altul),
@@ -129,12 +127,11 @@ npm test                    # nu încarcă .env: testele nu ating Stripe, emailu
   salvează în comandă. După plată, clientul primește pe emailul folosit la Stripe linkul previziunii (sau anunțul de
   restituire), prin SMTP (`SMTP_*`, `MAIL_FROM`); dacă trimiterea eșuează, se reîncearcă la verificarea periodică.
 - **Statistici / administrare** (`/admin`, `lib/admin.js`, `lib/adminauth.js`) – contul de administrare: pe /admin
-  scrii utilizatorul și parola, iar browserul rămâne conectat 180 de zile (cookie semnat, HttpOnly), până la
-  „Ieșire”. Pe site, linkul „Admin” din subsol duce la această pagină. Contul se creează sau se schimbă cu `npm run admin-cont`
+  scrii utilizatorul și parola. Cookie-ul de autentificare este un cookie de sesiune semnat, HttpOnly. Linkul „Admin” din subsol deschide formularul de login, inclusiv dintr-un browser deja conectat. Contul se creează sau se schimbă cu `npm run admin-cont`
   (sau `npm run admin-cont -- --generate` pentru o parolă generată, afișată o singură dată), care scrie în `.env`
   `ADMIN_USER` și `ADMIN_PASSWORD_HASH` (amprentă scrypt, nu parola) și șterge vechea `ADMIN_PASSWORD`; apoi
   `sudo systemctl restart nostra`. Schimbarea parolei închide sesiunile deschise cu cea veche. Accesul merge și
-  prin HTTP Basic (`utilizator:parolă`). Fără parolă, adresele din `ADMIN_EMAILS` pot cere un link de unică
+  prin HTTP Basic (`utilizator:parolă`). Doar în instalările fără cont configurat, adresele din `ADMIN_EMAILS` pot cere un link de unică
   folosință pe email (30 de minute). Formularul și HTTP Basic împart limita de zece încercări eșuate pe oră per IP. Conținut: bugetul de azi, costurile pe zile, domeniile și perioadele cerute, ultimele previziuni (inclusiv
   întrebările private) și erorile recente (`data/events.json`).
 - **Accesări** (`lib/access-log.js`, `lib/geoip.js`) – tabelul din /admin: pentru fiecare vizită data, ora, IP-ul,
@@ -212,7 +209,7 @@ cererile API fără `delivery` păstrează alegerea livrării anterioare (plată
 pe modelul principal, cu efortul `PAID_EFFORT`; comanda păstrează previziunea rapidă de origine (`upgradeOf`).
 
 În administrare, conversia formularului este proporția intrărilor pe formular care au dus la afișarea unui raport cerut în acea vizită. Un refresh al paginii sau o revenire la formular începe o vizită. Exemplele, refuzurile, deschiderile directe și recitirile nu adaugă conversii.
-Fereastra este de 30 de zile UTC, grupată după lățimea inițială (mobil până la 640 px inclusiv) și varianta câmpului de email. Pentru o probă separată, setează `FREE_SCREEN_EMAIL_REQUIRED=0` pe instanța de test și repornește procesul. Adresa rămâne obligatorie la cumpărarea livrării.
+Fereastra este de 30 de zile UTC, grupată după lățimea inițială (mobil până la 640 px inclusiv) și varianta câmpului de email. Coloana „Primul raport gratuit” folosește numai vizitele la formularul nou și numără o singură afișare gratuită pe vizită. Pentru o probă separată, setează `FREE_SCREEN_EMAIL_REQUIRED=0` pe instanța de test și repornește procesul. Adresa rămâne obligatorie la cumpărarea livrării.
 Pentru cereri API noi, `private: false` alege publicarea. Dacă opțiunea lipsește, raportul este accesibil doar prin link.
 
 ## Operare și recuperare

@@ -33,6 +33,11 @@ test.after(() => {
 const form = (url, data, headers = {}) => fetch(base + url, {
   method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...headers }, body: new URLSearchParams(data),
 });
+function emailOnly(t) {
+  const hash = process.env.ADMIN_PASSWORD_HASH;
+  delete process.env.ADMIN_PASSWORD_HASH;
+  t.after(() => { process.env.ADMIN_PASSWORD_HASH = hash; });
+}
 const cookieOf = (res) => (res.headers.get('set-cookie') || '').split(';')[0];
 // Browserul are acces la statistici? (/admin se deschide direct, fără pagina de autentificare)
 const me = async (cookie) => (await fetch(`${base}/admin`, { headers: cookie ? { Cookie: cookie } : {} })).status === 200;
@@ -42,7 +47,7 @@ test('fără acces: butonul nu apare, /admin arată pagina de acces', async () =
   const res = await fetch(`${base}/admin`);
   assert.equal(res.status, 401);
   const html = await res.text();
-  assert.match(html, /Trimite-mi linkul de acces/);
+  assert.doesNotMatch(html, /Trimite-mi linkul de acces/);
   assert.match(html, /name="user"/);
   assert.match(html, /name="password"/);
   assert.doesNotMatch(html, /cheltuit azi/);
@@ -51,7 +56,8 @@ test('fără acces: butonul nu apare, /admin arată pagina de acces', async () =
   assert.equal((await fetch(`${base}/api/me`)).status, 404);
 });
 
-test('linkul pe email: doar pentru adresele de administrator, de unică folosință, apoi acces 180 de zile', async () => {
+test('linkul pe email: doar pentru adresele de administrator, de unică folosință, apoi acces 180 de zile', async (t) => {
+  emailOnly(t);
   const before = mail._sent.length;
   const other = await (await form('/admin/link', { email: 'altcineva@example.com' })).text();
   assert.equal(mail._sent.length, before, 'altă adresă nu primește nimic');
@@ -89,7 +95,25 @@ test('linkul pe email: doar pentru adresele de administrator, de unică folosin�
   process.env.ADMIN_EMAILS = 'sef@example.com, Doi@Example.com';
 });
 
-test('cel mult 3 linkuri pe oră pentru aceeași adresă', async () => {
+test('activarea contului închide sesiunile de email și accesul prin link', async () => {
+  const hash = process.env.ADMIN_PASSWORD_HASH;
+  delete process.env.ADMIN_PASSWORD_HASH;
+  let cookie, token;
+  try {
+    const auth = require('../lib/adminauth');
+    token = auth.createLink('sef@example.com');
+    const link = auth.createLink('sef@example.com');
+    cookie = cookieOf(await fetch(base + '/admin/acces?t=' + link, { redirect: 'manual' }));
+    assert.equal(await me(cookie), true);
+  } finally { process.env.ADMIN_PASSWORD_HASH = hash; }
+  assert.equal(await me(cookie), false);
+  assert.equal((await fetch(base + '/admin/acces?t=' + token)).status, 404);
+  assert.equal((await form('/admin/link', { email: 'sef@example.com' })).status, 404);
+  require('../lib/adminauth')._reset();
+});
+
+test('cel mult 3 linkuri pe oră pentru aceeași adresă', async (t) => {
+  emailOnly(t);
   const before = mail._sent.length;
   for (let i = 0; i < 5; i++) await form('/admin/link', { email: 'sef@example.com' });
   assert.equal(mail._sent.length - before, 3);
@@ -102,7 +126,10 @@ test('contul: utilizator + parolă corecte → acces; greșite de prea multe ori
   const ok = await form('/admin/parola', { user: ' Admin ', password: 'parola-corecta' });
   assert.equal(ok.status, 303);
   assert.equal(ok.headers.get('location'), '/admin');
-  assert.match(ok.headers.get('set-cookie'), /HttpOnly; Secure; SameSite=Lax; Max-Age=15552000/);
+  assert.match(ok.headers.get('set-cookie'), /HttpOnly; Secure; SameSite=Lax/);
+  assert.doesNotMatch(ok.headers.get('set-cookie'), /Max-Age|Expires/i);
+  const entry = await fetch(base + '/admin/login', { headers: { Cookie: cookieOf(ok) } });
+  assert.match(await entry.text(), /name="password"/);
   assert.equal(await me(cookieOf(ok)), true);
   const page = await fetch(`${base}/admin`, { headers: { Cookie: cookieOf(ok) } });
   assert.equal(page.status, 200);

@@ -50,7 +50,7 @@
       const saved = JSON.parse(storage.getItem(KEY) || 'null');
       if (saved?.version === 1 && Array.isArray(saved.entries)) entries = saved.entries.filter(e => validId(e?.id)).slice(0, 100).map(e => ({
         id: e.id, title: text(e.title, 160), request: requestOf(e.request), createdAt: text(e.createdAt, 40), lastViewedAt: Number(e.lastViewedAt) || 0,
-        watched: e.watched === true, status: ['pending', 'done', 'declined', 'error'].includes(e.status) ? e.status : 'pending',
+        watched: e.status !== 'declined' && e.watched === true, status: ['pending', 'done', 'declined', 'error'].includes(e.status) ? e.status : 'pending',
         base: Number.isFinite(e.base) ? e.base : null, baseName: text(e.baseName, 160), resolved: Number(e.resolved) || 0, total: Number(e.total) || 0,
         seenResolved: Number.isInteger(e.seenResolved) ? e.seenResolved : Number(e.resolved) || 0,
         checkedBefore: e.checkedBefore === true, nextCheck: text(e.nextCheck, 40),
@@ -76,7 +76,7 @@
       const inheritWatch = watched && Date.parse(createdAt) >= Date.parse(watched.createdAt);
       const item = {
         id: rec.id, title: text(rec.prediction?.title || request.question, 160), request, createdAt,
-        lastViewedAt: viewed ? Date.now() : old?.lastViewedAt || Date.now(), watched: old?.watched || !!inheritWatch,
+        lastViewedAt: viewed ? Date.now() : old?.lastViewedAt || Date.now(), watched: !rec.prediction?.declined && (old?.watched || !!inheritWatch),
         status: rec.pending ? 'pending' : rec.prediction?.declined ? 'declined' : 'done',
         base: Number.isFinite(rec.prediction?.scenarios?.[0]?.probability) ? rec.prediction.scenarios[0].probability : null,
         baseName: text(rec.prediction?.scenarios?.[0]?.name, 160),
@@ -85,7 +85,7 @@
         nextCheck: text(rec.nextCheckAt, 40), checkedBefore: checks.some(c => c.status !== 'pending'),
         trend: (rec.history || []).map(h => h.base?.probability).filter(Number.isFinite).slice(-8),
       };
-      if (inheritWatch) for (const e of entries) if (questionKey(e.request) === group) e.watched = false;
+      if (inheritWatch && item.watched) for (const e of entries) if (questionKey(e.request) === group) e.watched = false;
       entries = entries.filter(e => e.id !== item.id);
       entries.push(item);
       save();
@@ -97,7 +97,7 @@
       pending: (id, request) => remember({ id, request, pending: true }),
       toggle(id) {
         const entry = entries.find(e => e.id === id);
-        if (!entry) return;
+        if (!entry || entry.status === 'declined') return;
         const enable = !entry.watched;
         if (enable) for (const e of entries) if (questionKey(e.request) === questionKey(entry.request)) e.watched = false;
         entry.watched = enable;

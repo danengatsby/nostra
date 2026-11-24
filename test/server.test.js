@@ -124,6 +124,7 @@ test('pagini și antete de securitate', async () => {
   }
   const cat = await (await fetch(`${base}/api/catalog`)).json();
   assert.ok(cat.domains.length > 5);
+  assert.equal(cat.domains[0].id, 'general');
   assert.equal(cat.domains[0].hint, undefined);
 });
 
@@ -167,7 +168,7 @@ test('prima pagină are butonul ASTRO-HOROSCOP către astrohor.fun, în aceeași
 
 test('subsolul are linkul Admin către pagina de autentificare', async () => {
   const html = await (await fetch(`${base}/`)).text();
-  assert.match(html, /<a id="admin-link" href="\/admin" rel="nofollow">Admin<\/a>/);
+  assert.match(html, /<a id="admin-link" href="\/admin\/login" rel="nofollow">Admin<\/a>/);
   const login = await fetch(`${base}/admin`);
   assert.ok([401, 404].includes(login.status), 'fără autentificare, statisticile nu se văd');
 });

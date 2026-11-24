@@ -24,6 +24,20 @@ test('istoricul se păstrează în browser fără email, acord sau identificator
   assert.doesNotMatch(serialized, /secret@example|secret-scope|consent|privateScope/);
 });
 
+test('o întrebare refuzată păstrează cererea pentru reformulare și iese din urmărire', () => {
+  const disk = storage();
+  const library = create(disk);
+  const rec = record();
+  library.pending(rec.id, rec.request);
+  library.toggle(rec.id);
+  library.remember({ ...rec, prediction: { declined: true, predictions: [], scenarios: [] } });
+  library.toggle(rec.id);
+  const entry = create(disk).get(rec.id);
+  assert.equal(entry.status, 'declined');
+  assert.equal(entry.request.question, rec.request.question);
+  assert.equal(entry.watched, false);
+});
+
 test('urmărirea trece la versiunea nouă fără să piardă istoricul sau să confunde operatorii', () => {
   const library = create(storage());
   library.remember(record());

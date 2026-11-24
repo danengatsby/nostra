@@ -93,9 +93,9 @@ app.post('/api/form-visits', (req, res) => {
   const { id, event, device } = req.body || {};
   if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) return res.sendStatus(400);
   if (event === 'visit' && ['mobile', 'desktop'].includes(device)) {
-    operations.visitForm(id, device, catalog.screenEmailRequired());
+    operations.visitForm(id, device, catalog.screenEmailRequired(), req.body.layout === 'question-first');
   } else if (event === 'display') {
-    if (!operations.displayReport(id)) return res.sendStatus(404);
+    if (!operations.displayReport(id, req.body.free === true)) return res.sendStatus(404);
   } else return res.sendStatus(400);
   res.status(204).end();
 });
@@ -346,12 +346,14 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.get(['/termeni', '/terms'], (req, res) => res.set('Cache-Control', 'public, max-age=600').type('html').send(legal.render()));
 
 // Administrare: contul (ADMIN_USER + parolă) sau linkul pe email (ADMIN_EMAILS).
+app.get('/admin/login', (req, res) => admin.loginPage(res));
 app.get('/admin', admin.auth, admin.page);
 
 // Accesul la statistici fără parolă: linkul de unică folosință trimis pe email.
 const adminForm = express.urlencoded({ extended: false, limit: '2kb' });
 const ipKey = adminauth.ipKey;
 app.post('/admin/link', adminForm, async (req, res) => {
+  if (!adminauth.emailLoginEnabled()) return res.sendStatus(404);
   const email = String(req.body?.email || '').trim().slice(0, 254);
   const token = adminauth.allowLinkRequest(ipKey(req)) && adminauth.createLink(email);
   if (token) {
@@ -367,6 +369,7 @@ app.post('/admin/link', adminForm, async (req, res) => {
 });
 app.get('/admin/acces', (req, res) => {
   res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  if (!adminauth.emailLoginEnabled()) return res.sendStatus(404);
   if (!adminauth.allowLinkRequest(ipKey(req))) return admin.loginPage(res.status(429), '', 'Prea multe încercări.');
   const email = adminauth.consumeLink(req.query.t);
   if (!email) return admin.loginPage(res.status(400), '', 'Linkul a expirat sau a fost deja folosit. Cere unul nou.');

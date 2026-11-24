@@ -89,7 +89,7 @@ test('conversia numără vizite distincte și păstrează ecranul și varianta d
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const mobile = 'a'.repeat(32), desktop = 'b'.repeat(32);
-  assert.equal((await send({ id: mobile, event: 'visit', device: 'mobile' })).status, 204);
+  assert.equal((await send({ id: mobile, event: 'visit', device: 'mobile', layout: 'question-first' })).status, 204);
   assert.equal((await send({ id: desktop, event: 'visit', device: 'desktop' })).status, 204);
   await send({ id: mobile, event: 'visit', device: 'desktop' });
   await send({ id: mobile, event: 'display' });
@@ -97,4 +97,8 @@ test('conversia numără vizite distincte și păstrează ecranul și varianta d
   assert.equal((await send({ id: 'c'.repeat(32), event: 'display' })).status, 404);
   assert.equal((await send({ id: mobile, event: 'unexpected' })).status, 400);
   assert.deepEqual(ops.formConversion().map(x => [x.device, x.visits, x.reports]), [['mobile', 1, 1], ['desktop', 1, 0]]);
+  assert.deepEqual(ops.formConversion().map(x => [x.free_visits, x.free_reports]), [[1, 0], [0, null]]);
+  await send({ id: mobile, event: 'display', free: true });
+  await send({ id: mobile, event: 'display', free: true });
+  assert.equal(ops.formConversion()[0].free_reports, 1);
 });
