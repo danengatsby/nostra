@@ -16,7 +16,6 @@
 <body>
   <header class="site-header">
     <div class="header-tools">
-      <a id="astro-header" class="btn-small btn-astro" href="https://astrohor.fun/" data-i18n="astroButton">ASTRO-HOROSCOP</a>
       <button id="install" class="btn-small" type="button" hidden data-i18n="install">Instalează aplicația</button>
       <button id="ui-lang" class="btn-small" type="button" aria-label="Change language to English">EN</button>
     </div>
@@ -24,7 +23,7 @@
       <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><use href="/icon.svg#mark"/></svg>
       <span class="brand-name">Nostradamus</span>
     </a>
-    <p class="tagline" data-i18n="tagline">Previziuni construite din ce se întâmplă acum în lume</p>
+    <p class="tagline" data-i18n="tagline">Pune o întrebare. Primești scenarii cu probabilități și surse. Revino după termen pentru a vedea ce s-a adeverit.</p>
   </header>
 
   <main>
@@ -130,16 +129,21 @@
         </details>
       </form>
 
+      <section hidden id="verdict-card" class="card featured-verdict" aria-labelledby="verdict-title">
+        <h2 id="verdict-title" data-i18n="publicVerdict">Ultima verificare publică</h2>
+        <div id="featured-verdict"></div>
+      </section>
+
       <section class="personal" aria-labelledby="personal-title">
-        <h2 id="personal-title" data-i18n="personalTitle">Istoricul meu</h2>
-        <p class="hint" data-i18n="personalHint">Salvat în acest browser. Întrebările urmărite se actualizează când revii în aplicație.</p>
-        <div class="personal-tools" role="group" aria-label="Filtre istoric" data-i18n-aria="personalTitle">
+        <h2 hidden id="personal-title" data-i18n="personalTitle">Istoricul meu</h2>
+        <p hidden id="personal-hint" class="hint" data-i18n="personalHint">Salvat în acest browser. Întrebările urmărite se actualizează când revii în aplicație.</p>
+        <div hidden id="library-tools" class="personal-tools" role="group" aria-label="Filtre istoric" data-i18n-aria="personalTitle">
           <button id="library-all" class="btn-small" type="button" aria-pressed="true" data-i18n="historyAll">Toate</button>
           <button id="library-watched" class="btn-small" type="button" aria-pressed="false" data-i18n="historyWatched">Întrebări urmărite</button>
           <button id="library-refresh" class="btn-small" type="button" data-i18n="refreshChecks">Actualizează rezultatele</button>
         </div>
         <p id="library-status" class="hint" role="status"></p>
-        <ul id="personal-list" class="personal-list"></ul>
+        <ul hidden id="personal-list" class="personal-list"></ul>
         <p id="personal-empty" class="muted" data-i18n="personalEmpty">Previziunile pe care le consulți vor apărea aici.</p>
       </section>
 

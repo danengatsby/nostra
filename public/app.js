@@ -5,12 +5,12 @@
 (async () => {
   const $ = (sel) => document.querySelector(sel);
   // Un proces pornit înaintea actualizării poate servi încă șablonul HTML anterior.
-  if (!$('#question-min')) {
+  if (!$('#featured-verdict')) {
     try {
       const response = await fetch('/index.html', { cache: 'reload' });
       if (!response.ok) throw new Error('shell');
       const shell = new DOMParser().parseFromString(await response.text(), 'text/html');
-      if (!shell.querySelector('#question-min')) throw new Error('shell');
+      if (!shell.querySelector('#featured-verdict')) throw new Error('shell');
       for (const selector of ['header', 'main', 'footer']) $(selector).replaceWith(shell.querySelector(selector));
       if (!window.NostraLibrary?.orderPresentation) {
         await new Promise((resolve, reject) => {
@@ -66,7 +66,10 @@
       refundDone: 'Plata a fost restituită.',
       firstCheckAfter: 'Prima verificare după', nextCheckAfter: 'Următoarea verificare după',
       newChecks: n => n === 1 ? '1 rezultat nou' : `${n} rezultate noi`,
-      tagline: 'Previziuni construite din ce se întâmplă acum în lume',
+      tagline: 'Pune o întrebare. Primești scenarii cu probabilități și surse. Revino după termen pentru a vedea ce s-a adeverit.',
+      publicVerdict: 'Ultima verificare publică', exampleVerdict: 'Cum se verifică o previziune',
+      noPublicVerdict: 'Până la prima verificare publică, poți explora raportul fictiv și criteriile sale de verificare.',
+      openEvidence: 'Citește sursa verdictului', calendar: 'Adaugă verificarea în calendar', calendarTitle: 'Verifică previziunea',
       viewExample: 'Vezi un raport exemplu', edit: 'Modifică', yourQuestion: 'Întrebarea ta', questionMin: 'Scrie cel puțin 5 caractere.', tryExample: 'Încearcă cu întrebarea ta', exploreDomain: 'Domeniu, regiune și perioadă',
       exampleChecks: 'Într-un raport real poți urmări întrebarea și reveni după termen pentru a vedea ce afirmații s-au adeverit și pe ce dovezi se bazează verdictul.',
       sharePrivate: 'Oricine primește linkul poate citi întrebarea și raportul.', viewProgress: 'Vezi progresul',
@@ -82,7 +85,7 @@
       checkedCount: (n, total) => `${n}/${total} afirmații verificate`, historyUpdated: 'Rezultatele au fost actualizate.', historyOffline: 'Actualizarea nu a reușit. Istoricul salvat rămâne disponibil.', storageUnavailable: 'Istoricul nu poate fi păstrat în acest browser.',
       allDomains: 'Toate domeniile', allHorizons: 'Toate perioadele', allModels: 'Toate modelele', modelFilter: 'Modelul', mainModel: 'Principal', liteModel: 'Rapid', smallSample: 'Eșantion mic: rezultatele pot varia mult.',
       retryConnection: 'Reîncearcă legătura', offline: 'Nu ai conexiune. Poți continua să completezi formularul; previziunile pornite continuă pe server.', reconnecting: 'Legătura cu serverul s-a întrerupt. Reîncercăm automat; previziunea continuă pe server.', connectionUnavailable: 'Legătura cu serverul s-a întrerupt. Poți reîncerca fără să reintroduci întrebarea.', trackUnavailable: 'Palmaresul nu a putut fi încărcat. Reîncearcă după restabilirea conexiunii.',
-      install: 'Instalează aplicația', astroButton: 'ASTRO-HOROSCOP', stepDomain: 'Domeniul', stepQuestion: 'Ce vrei să afli?', optional: '(opțional)',
+      install: 'Instalează aplicația', stepDomain: 'Domeniul', stepQuestion: 'Ce vrei să afli?', optional: '(opțional)',
       questionPh: 'Ex.: Va scădea inflația din România sub 5% până la finalul perioadei?', examples: 'Exemple de întrebări',
       questionHint: 'Poți lăsa întrebarea goală pentru o privire de ansamblu asupra domeniului ales.',
       stepHorizon: 'Perioada', region: 'Regiunea', answerLang: 'Limba răspunsului', effort: 'Efortul oracolului',
@@ -132,24 +135,24 @@
         metrics: 'Rată de succes, scor Brier și calibrare', calibration: 'Calibrare', said: (r) => `Spus ${r}`, happened: (a, n) => `s-a întâmplat ${a}% (${n})`, latest: 'Ultimele verificări',
       },
       examplesBy: {
-        general: [['Va scădea inflația din România sub 5%?', 'ro'], ['Ce lansări importante în AI vor avea loc?']],
+        general: [['Va scădea inflația din România sub 5%?', 'ro', 'economie'], ['Ce lansări importante în AI vor avea loc?', 'global', 'tehnologie']],
         economie: [['Va scădea inflația din România sub 5%?', 'ro'], ['Va intra zona euro în recesiune?', 'eu']],
         piete: [['Unde va fi cursul EUR/RON?', 'ro'], ['Va depăși Bitcoin maximul istoric?']],
         tehnologie: [['Ce lansări importante în AI vor avea loc?'], ['Cum va evolua piața smartphone-urilor?']],
-        politica: [['Cine va câștiga următoarele alegeri?'], ['Va rămâne coaliția actuală la guvernare?']],
+        politica: [['Ce partid va obține cele mai multe voturi la următoarele alegeri parlamentare din România?', 'ro', 'politica', '5y'], ['Va rămâne coaliția actuală la guvernare în România?', 'ro']],
         geopolitica: [['Va exista un armistițiu în Ucraina?', 'ua'], ['Cum vor evolua relațiile SUA–China?', 'global']],
         energie: [['Cât va costa barilul de petrol Brent?'], ['Vor scădea facturile la energie în România?', 'ro']],
         imobiliare: [['Vor crește prețurile apartamentelor în București?', 'ro'], ['Vor scădea dobânzile la creditele ipotecare?']],
         clima: [['Va fi iarna mai caldă decât media?'], ['Va fi acest an cel mai cald înregistrat?']],
         sanatate: [['Cum va evolua sezonul de gripă?'], ['Ce tratamente noi vor fi aprobate în UE?', 'eu']],
-        sport: [['Cine va câștiga Liga Campionilor?'], ['Se va califica România la Campionatul Mondial?', 'ro']],
-        stiinta: [['Va ateriza o misiune cu echipaj pe Lună?'], ['Ce descoperiri importante sunt așteptate?']],
+        sport: [['Cine va câștiga următoarea finală a Ligii Campionilor?', 'global', 'sport', '1y'], ['Se va califica România la Campionatul Mondial?', 'ro']],
+        stiinta: [['Va ateriza o misiune cu echipaj pe Lună?', 'global', 'stiinta', '5y'], ['Ce descoperiri importante sunt așteptate?']],
         societate: [['Va crește salariul minim în România?', 'ro'], ['Cum va evolua șomajul în UE?', 'eu']],
         divertisment: [['Ce film va câștiga Oscarul?'], ['Care va fi cel mai vizionat film al anului?']],
         afaceri: [['Va crește numărul firmelor noi din România?', 'ro'], ['Cum va evolua finanțarea startup-urilor europene?', 'eu']],
         agricultura: [['Cum va evolua recolta de grâu din România?', 'ro'], ['Vor crește prețurile alimentelor în UE?', 'eu']],
         educatie: [['Va crește numărul studenților din România?', 'ro'], ['Cum va evolua cererea pentru cursuri de reconversie profesională?']],
-        turism: [['Va crește numărul turiștilor străini în România?', 'ro'], ['Cum vor evolua tarifele de cazare pe litoral?']],
+        turism: [['Va crește numărul turiștilor străini în România?', 'ro'], ['Cum vor evolua tarifele de cazare pe litoralul românesc?', 'ro']],
         transport: [['Ce tronsoane de autostradă ar putea fi deschise în România?', 'ro'], ['Va crește transportul feroviar de pasageri în UE?', 'eu']],
         mediu: [['Se va îmbunătăți calitatea aerului în București?', 'ro'], ['Va crește rata de reciclare a deșeurilor din România?', 'ro']],
         securitate_cibernetica: [['Cum va evolua numărul incidentelor ransomware raportate în UE?', 'eu'], ['Va crește adoptarea autentificării fără parolă?']],
@@ -157,7 +160,7 @@
         auto: [['Va crește ponderea mașinilor electrice înmatriculate în România?', 'ro'], ['Cum va evolua rețeaua de stații de încărcare din UE?', 'eu']],
         industrie: [['Va crește producția industrială din România?', 'ro'], ['Cum vor evolua comenzile fabricilor europene?', 'eu']],
         comert: [['Vor crește vânzările online din România?', 'ro'], ['Cum va evolua încrederea consumatorilor din UE?', 'eu']],
-        telecom: [['Cum va evolua acoperirea 5G în România?', 'ro'], ['Va crește accesul la internet prin satelit în Europa?']],
+        telecom: [['Cum va evolua acoperirea 5G în România?', 'ro'], ['Va crește accesul la internet prin satelit în UE?', 'eu']],
       },
     },
     en: {
@@ -174,7 +177,10 @@
       refundDone: 'Your payment has been refunded.',
       firstCheckAfter: 'First check after', nextCheckAfter: 'Next check after',
       newChecks: n => n === 1 ? '1 new result' : `${n} new results`,
-      tagline: 'Forecasts built from what is happening in the world right now',
+      tagline: 'Ask a question. Get scenarios with probabilities and sources. Return after the deadline to see what came true.',
+      publicVerdict: 'Latest public check', exampleVerdict: 'How forecasts are checked',
+      noPublicVerdict: 'Until the first public check is available, explore the fictional report and its resolution criteria.',
+      openEvidence: 'Read the evidence', calendar: 'Add the check to your calendar', calendarTitle: 'Check the forecast',
       viewExample: 'See a sample report', edit: 'Edit', yourQuestion: 'Your question', questionMin: 'Enter at least 5 characters.', tryExample: 'Try your own question', exploreDomain: 'Topic, region and period',
       exampleChecks: 'With a real report, you can follow the question and return after the deadline to see which claims came true and the evidence for each verdict.',
       sharePrivate: 'Anyone who receives this link can read the question and the report.', viewProgress: 'View progress',
@@ -190,7 +196,7 @@
       checkedCount: (n, total) => `${n}/${total} claims checked`, historyUpdated: 'Results have been updated.', historyOffline: 'Could not update. Your saved history is still available.', storageUnavailable: 'History cannot be saved in this browser.',
       allDomains: 'All domains', allHorizons: 'All periods', allModels: 'All models', modelFilter: 'Model', mainModel: 'Main', liteModel: 'Fast', smallSample: 'Small sample: results may vary substantially.',
       retryConnection: 'Retry connection', offline: 'You are offline. You can keep filling in the form; forecasts already started continue on the server.', reconnecting: 'The server connection was interrupted. Retrying automatically; your forecast continues on the server.', connectionUnavailable: 'The server connection was interrupted. You can retry without entering your question again.', trackUnavailable: 'Could not load the track record. Retry when the connection is restored.',
-      install: 'Install the app', astroButton: 'ASTRO-HOROSCOPE', stepDomain: 'Domain', stepQuestion: 'What would you like to know?', optional: '(optional)',
+      install: 'Install the app', stepDomain: 'Domain', stepQuestion: 'What would you like to know?', optional: '(optional)',
       questionPh: 'E.g.: Will euro area inflation fall below 2% by the end of the period?', examples: 'Example questions',
       questionHint: 'Leave the question blank for an overview of your chosen topic.',
       stepHorizon: 'Period', region: 'Region', answerLang: 'Answer language', effort: 'Oracle effort',
@@ -240,18 +246,18 @@
         metrics: 'Success rate, Brier score and calibration', calibration: 'Calibration', said: (r) => `Said ${r}`, happened: (a, n) => `happened ${a}% (${n})`, latest: 'Latest checks',
       },
       examplesBy: {
-        general: [['Will the euro area enter a recession?', 'eu'], ['Which major AI launches are expected?']],
+        general: [['Will the euro area enter a recession?', 'eu', 'economie'], ['Which major AI launches are expected?', 'global', 'tehnologie']],
         economie: [['Will the euro area enter a recession?', 'eu'], ['Will the Fed cut interest rates?', 'us']],
         piete: [['Where will EUR/USD trade?'], ['Will Bitcoin hit a new all-time high?']],
         tehnologie: [['Which major AI launches will happen?'], ['How will the smartphone market evolve?']],
-        politica: [['Who will win the next election?'], ['Will the current government survive?']],
+        politica: [['Which party will win the most votes in Romania’s next parliamentary election?', 'ro', 'politica', '5y'], ['Will Romania’s governing coalition stay in power?', 'ro']],
         geopolitica: [['Will there be a ceasefire in Ukraine?', 'ua'], ['How will US–China relations evolve?', 'global']],
         energie: [['What will a barrel of Brent cost?'], ['Will European gas prices fall?', 'eu']],
-        imobiliare: [['Will house prices rise in my city?'], ['Will mortgage rates go down?']],
+        imobiliare: [['Will house prices rise in Bucharest?', 'ro'], ['Will mortgage rates go down?']],
         clima: [['Will this winter be warmer than average?'], ['Will this be the hottest year on record?']],
         sanatate: [['How will the flu season evolve?'], ['Which new treatments will be approved in the EU?', 'eu']],
-        sport: [['Who will win the Champions League?'], ['Who will win the next Grand Slam?']],
-        stiinta: [['Will a crewed mission land on the Moon?'], ['Which major discoveries are expected?']],
+        sport: [['Who will win the next Champions League final?', 'global', 'sport', '1y'], ['Who will win the next Grand Slam?']],
+        stiinta: [['Will a crewed mission land on the Moon?', 'global', 'stiinta', '5y'], ['Which major discoveries are expected?']],
         societate: [['Will unemployment rise in the EU?', 'eu'], ['How will migration trends change?']],
         divertisment: [['Which film will win the Oscar?'], ['What will be the year’s biggest box office hit?']],
         afaceri: [['Will the number of new businesses in Romania rise?', 'ro'], ['How will funding for European startups evolve?', 'eu']],
@@ -265,7 +271,7 @@
         auto: [['Will the share of electric vehicles registered in Romania increase?', 'ro'], ['How will the EU charging station network evolve?', 'eu']],
         industrie: [['Will industrial production in Romania increase?', 'ro'], ['How will European manufacturing orders evolve?', 'eu']],
         comert: [['Will online retail sales in Romania increase?', 'ro'], ['How will EU consumer confidence evolve?']],
-        telecom: [['How will 5G coverage in Romania evolve?', 'ro'], ['Will satellite internet access expand in Europe?']],
+        telecom: [['How will 5G coverage in Romania evolve?', 'ro'], ['Will satellite internet access expand in the EU?', 'eu']],
       },
     },
   };
@@ -276,7 +282,9 @@
       scenarios: 'Scenarii', predictions: 'Previziuni verificabile', now: 'Unde ne aflăm acum', drivers: 'Factori-cheie',
       watch: 'De urmărit', wildcards: 'Surprize posibile', sources: 'Surse consultate', confidence: 'Încrederea oracolului', conf1: 'Încredere',
       conf: { low: 'scăzută', medium: 'medie', high: 'ridicată' }, imp: { positive: 'favorabil', negative: 'nefavorabil', uncertain: 'incert' },
-      made: 'Previziune făcută la', research: (s, c) => `${s} căutări pe internet, ${c} surse găsite`,
+      made: 'Previziune făcută la', forecastPeriod: 'Intervalul prognozei',
+      previousEdition: 'Ediția anterioară', thisEdition: 'Această ediție', addedSources: 'Surse citate pentru prima dată față de ediția anterioară',
+      noAddedSources: 'Această ediție nu citează surse suplimentare față de ediția anterioară.', research: (s, c) => `${s} căutări pe internet, ${c} surse găsite`,
       declinedTitle: 'Oracolul nu răspunde la această întrebare', horizon: 'Perioada', privateTag: 'privată', effort: 'Efort',
       liteTag: 'model rapid', liteNote: 'Previziune făcută cu modelul rapid al oracolului (analiză mai scurtă, cu mai puține căutări).',
       resolutionCriteria: 'Criteriu de verificare',
@@ -296,7 +304,9 @@
       scenarios: 'Scenarios', predictions: 'Verifiable predictions', now: 'Where things stand', drivers: 'Key drivers',
       watch: 'What to watch', wildcards: 'Possible surprises', sources: 'Sources consulted', confidence: 'Oracle confidence', conf1: 'Confidence',
       conf: { low: 'low', medium: 'medium', high: 'high' }, imp: { positive: 'favourable', negative: 'unfavourable', uncertain: 'uncertain' },
-      made: 'Forecast made on', research: (s, c) => `${s} web searches, ${c} sources found`,
+      made: 'Forecast made on', forecastPeriod: 'Forecast period',
+      previousEdition: 'Previous edition', thisEdition: 'This edition', addedSources: 'Sources newly cited since the previous edition',
+      noAddedSources: 'This edition cites no additional sources compared with the previous edition.', research: (s, c) => `${s} web searches, ${c} sources found`,
       declinedTitle: 'The oracle will not answer this question', horizon: 'Horizon', privateTag: 'private', effort: 'Effort',
       liteTag: 'fast model', liteNote: 'Forecast made with the oracle’s fast model (a shorter analysis with fewer searches).',
       resolutionCriteria: 'Resolution criteria',
@@ -334,7 +344,7 @@
   function applyUi() {
     document.documentElement.lang = ui;
     const astro = ui === 'en' ? 'https://astrohor.fun/?lang=en' : 'https://astrohor.fun/';
-    for (const id of ['astro-switch', 'astro-header']) $(`#${id}`).href = astro;
+    $('#astro-switch').href = astro;
     document.querySelectorAll('[data-i18n]').forEach((n) => { n.textContent = tr(n.dataset.i18n); });
     const pay = catalog?.payment;
     $('#free-hint').textContent = tr('freeHint')(catalog?.freeTier === 'main' ? 2 : 1);
@@ -401,6 +411,7 @@
   const label = (list, id, lang = ui) => (list.find((x) => x.id === id) || {})[lang] || id;
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
   const fmtDate = (iso, lang = ui) => new Date(iso).toLocaleDateString(lang === 'en' ? 'en-GB' : 'ro-RO', { day: 'numeric', month: 'long', year: 'numeric' });
+  const fmtUTCDate = (date, lang) => new Date(date).toLocaleDateString(lang === 'en' ? 'en-GB' : 'ro-RO', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   const fmtShort = (iso, lang = ui) => new Date(iso).toLocaleDateString(lang === 'en' ? 'en-GB' : 'ro-RO', { day: 'numeric', month: 'short', year: 'numeric' });
 
   async function api(url, opts) {
@@ -556,11 +567,14 @@
     $('.context-hint').hidden = custom;
     const box = $('#examples');
     box.replaceChildren();
-    (tr('examplesBy')[currentDomain()] || []).forEach(([text, region]) => {
+    const group = currentDomain();
+    (tr('examplesBy')[group] || []).forEach(([text, region = 'global', domain = group, horizon = '3m']) => {
       const b = el('button', { type: 'button', class: 'example', text });
       b.addEventListener('click', () => {
         const q = $('#question');
-        if (region) $('#region').value = region;
+        selectDomain(domain);
+        $('#region').value = region;
+        document.getElementById('h-' + horizon).checked = true;
         renderContextSummary();
         q.value = text;
         q.dispatchEvent(new Event('input', { bubbles: true }));
@@ -975,7 +989,15 @@
       });
     }
     if (!rows.length && !refresh) return null;
-    return card(rows.length ? t.history : null,
+    const previous = rec.comparison && rec.history.find(h => h.id === rec.comparison.previousId);
+    const base = rec.prediction.scenarios[0];
+    const changes = previous?.base && base ? el('div', { class: 'edition-change' },
+      el('p', {}, el('a', { href: '/p/' + previous.id, 'data-nav': true, text: t.previousEdition }), ` · ${fmtShort(previous.createdAt, lang)} · ${previous.base.name} (${previous.base.probability}%)`),
+      el('p', {}, el('strong', { text: t.thisEdition }), ` · ${fmtShort(rec.createdAt, lang)} · ${base.name} (${base.probability}%)`),
+      rec.comparison.addedSources.length
+        ? el('div', {}, el('strong', { text: t.addedSources }), sourceList(rec.comparison.addedSources, t, lang))
+        : el('p', { class: 'hint', text: t.noAddedSources })) : null;
+    return card(rows.length ? t.history : null, changes,
       rows.length ? el('p', { class: 'muted', text: t.historyHint }) : null,
       rows.length ? el('ul', { class: 'history' }, rows) : null,
       refresh);
@@ -1052,6 +1074,9 @@
       el('h1', { text: p.title }),
       rq.question ? el('p', { class: 'muted', text: `„${rq.question}”` }) : null,
       el('p', { class: 'r-summary', text: p.summary }),
+      el('p', { class: 'hint report-dates' },
+        `${t.made} ${fmtUTCDate(rec.createdAt, lang)}`,
+        rec.forecastStart && rec.forecastEnd ? el('span', { text: `${t.forecastPeriod}: ${fmtUTCDate(rec.forecastStart, lang)} – ${fmtUTCDate(rec.forecastEnd, lang)}` }) : null),
       confidenceDots(p.confidence, t),
       el('p', { class: 'hint source-coverage' }, sources.length ? sourceJump(coverage) : coverage),
       reportAction(rec)));
@@ -1113,7 +1138,7 @@
       root.append(sourceCard);
     }
     if (p.quatrain) root.append(foldCard(t.quatrain, el('blockquote', { class: 'quatrain', text: p.quatrain })));
-    if (!rec.example) root.append(el('p', { class: 'r-foot', text: [`${t.made} ${fmtDate(rec.createdAt, lang)}`, t.research(meta.searches || 0, meta.consulted || 0), meta.tier === 'lite' ? t.liteNote : ''].filter(Boolean).join(' · ') }));
+    if (!rec.example) root.append(el('p', { class: 'r-foot', text: [t.research(meta.searches || 0, meta.consulted || 0), meta.tier === 'lite' ? t.liteNote : ''].filter(Boolean).join(' · ') }));
   }
 
   function sourceDate(s, t, lang) {
@@ -1158,6 +1183,38 @@
     button.setAttribute('aria-pressed', String(!!watched));
   }
 
+  function calendarButton(id, nextCheck, title) {
+    const button = el('button', { class: 'btn-small', type: 'button', text: tr('calendar') });
+    button.addEventListener('click', () => {
+      const date = new Date(nextCheck);
+      const day = [date.getUTCFullYear(), String(date.getUTCMonth() + 1).padStart(2, '0'), String(date.getUTCDate()).padStart(2, '0')].join('');
+      const link = `${location.origin}/p/${id}`;
+      const summary = (tr('calendarTitle') + ' · ' + title).replace(/\\/g, '\\\\').replace(/\r\n|[\r\n]/g, '\\n').replace(/[,;]/g, '\\$&');
+      const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Nostradamus//Forecast//EN', 'BEGIN:VEVENT',
+        `UID:${id}-${day}@${location.hostname}`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`,
+        `DTSTART;VALUE=DATE:${day}`, 'TRANSP:TRANSPARENT', `SUMMARY:${summary}`, `DESCRIPTION:${link}`, `URL:${link}`, 'END:VEVENT', 'END:VCALENDAR'];
+      // iCalendar limitează fiecare linie la 75 de octeți, inclusiv spațiul de continuare.
+      const encoder = new TextEncoder();
+      const folded = lines.map(line => {
+        let output = '', bytes = 0;
+        for (const char of line) {
+          const size = encoder.encode(char).length;
+          if (bytes + size > 75) { output += '\r\n '; bytes = 1; }
+          output += char;
+          bytes += size;
+        }
+        return output;
+      });
+      const file = URL.createObjectURL(new Blob([folded.join('\r\n') + '\r\n'], { type: 'text/calendar;charset=utf-8' }));
+      const download = el('a', { href: file, download: `nostradamus-${id}.ics` });
+      document.body.append(download);
+      download.click();
+      download.remove();
+      setTimeout(() => URL.revokeObjectURL(file), 1000);
+    });
+    return button;
+  }
+
   function reportAction(rec) {
     if (rec.example) {
       return el('div', { class: 'report-action' },
@@ -1175,6 +1232,7 @@
     const hasChecks = rec.checks?.some(check => check.status !== 'pending');
     return el('div', { class: 'report-action' }, button,
       rec.nextCheckAt ? el('p', { class: 'hint', text: tr(hasChecks ? 'nextCheckAfter' : 'firstCheckAfter') + ' ' + fmtDate(rec.nextCheckAt) }) : null,
+      rec.nextCheckAt ? calendarButton(rec.id, rec.nextCheckAt, rec.prediction.title) : null,
       el('p', { class: 'hint', id: 'watch-hint', text: tr('watchHint') }));
   }
 
@@ -1198,9 +1256,12 @@
 
   function renderLibrary() {
     if (!catalog) return;
+    const all = library.list();
+    if (!all.length) libraryFilter = 'all';
     $('#library-all').setAttribute('aria-pressed', String(libraryFilter === 'all'));
     $('#library-watched').setAttribute('aria-pressed', String(libraryFilter === 'watched'));
-    const entries = library.list().filter(e => libraryFilter !== 'watched' || e.watched);
+    for (const selector of ['#library-tools', '#personal-hint', '#personal-title']) $(selector).hidden = !all.length;
+    const entries = all.filter(e => libraryFilter !== 'watched' || e.watched);
     $('#personal-list').replaceChildren(...entries.map(e => {
       let action;
       if (e.status === 'declined') {
@@ -1224,8 +1285,9 @@
         e.watched && e.nextCheck ? el('p', { class: 'hint', text: `${tr(e.checkedBefore ? 'nextCheckAfter' : 'firstCheckAfter')} ${fmtShort(e.nextCheck)}` }) : null,
         e.watched && e.resolved > e.seenResolved ? el('strong', { text: tr('newChecks')(e.resolved - e.seenResolved) }) : null,
         evolution ? el('p', { class: 'hint history-probability', text: `${tr('baseProbability')}: ${evolution}${e.baseName ? ` — ${e.baseName}` : ''}` }) : null,
-        el('div', { class: 'personal-tools' }, action, remove));
+        el('div', { class: 'personal-tools' }, action, e.watched && e.nextCheck ? calendarButton(e.id, e.nextCheck, e.title) : null, remove));
     }));
+    $('#personal-list').hidden = !entries.length;
     $('#personal-empty').hidden = entries.length > 0;
     $('#personal-empty').textContent = tr(libraryFilter === 'watched' ? 'watchedEmpty' : 'personalEmpty');
     if (!library.persistent) $('#library-status').textContent = tr('storageUnavailable');
@@ -1305,14 +1367,39 @@
   }
 
   // ---------- palmares ----------
-  async function loadTrack() {
+  let homeTrackRequest = 0;
+  function loadHomeTrack() {
+    const request = ++homeTrackRequest;
+    const unfiltered = api('/api/track-record');
+    loadTrack(unfiltered);
+    unfiltered.then(data => {
+      if (request !== homeTrackRequest) return;
+      $('#verdict-card').hidden = false;
+      const verdict = data.recent[0];
+      $('#verdict-title').textContent = tr(verdict ? 'publicVerdict' : 'exampleVerdict');
+      $('#featured-verdict').replaceChildren(...(verdict ? [
+        el('strong', { text: verdict.claim }),
+        el('p', { text: tr('track').verdict(verdict.probability, verdict.outcome) }),
+        el('p', { text: verdict.evidence }),
+        el('a', { href: verdict.url, target: '_blank', rel: 'noopener noreferrer', text: tr('openEvidence') + ' · ' + hostOf(verdict.url) }),
+        el('p', {}, el('a', { href: '/p/' + verdict.id, 'data-nav': true, text: tr('openForecast') })),
+      ] : [el('p', { text: tr('noPublicVerdict') }), el('a', { href: '/exemplu', 'data-nav': true, text: tr('viewExample') })]));
+    }).catch(() => {
+      if (request !== homeTrackRequest) return;
+      $('#verdict-card').hidden = false;
+      $('#verdict-title').textContent = tr('publicVerdict');
+      $('#featured-verdict').textContent = tr('trackUnavailable');
+    });
+  }
+
+  async function loadTrack(unfiltered) {
     const request = ++trackRequest;
     const box = $('#track');
     const T = tr('track');
     try {
       const params = new URLSearchParams();
       for (const name of ['domain', 'horizon', 'tier']) if ($(`#track-${name}`).value) params.set(name, $(`#track-${name}`).value);
-      const data = await api(`/api/track-record?${params}`);
+      const data = await (params.size || !unfiltered ? api(`/api/track-record?${params}`) : unfiltered);
       if (request !== trackRequest) return;
       if (!$('#view-form').hidden) setConnection('connected');
       if (!data.resolved) {
@@ -1406,7 +1493,7 @@
       if (offlineCatalog || navigator.onLine === false) return;
       startFormVisit();
       refreshLibrary();
-      loadTrack();
+      loadHomeTrack();
       loadRecent();
     }
   }
@@ -1429,7 +1516,7 @@
     applyUi();
     if (catalog) buildForm();
     if (current && !current.example && !$('#view-result').hidden) renderPrediction(current);
-    if (!$('#view-form').hidden) { loadTrack(); loadRecent(); document.title = tr('defaultTitle'); }
+    if (!$('#view-form').hidden) { loadHomeTrack(); loadRecent(); document.title = tr('defaultTitle'); }
     if (!$('#view-order').hidden) renderOrder();
     if (!$('#view-progress').hidden) setupNotify();
     if (current?.example && location.pathname === '/exemplu') loadExample();
@@ -1474,7 +1561,7 @@
   $('#library-all').addEventListener('click', () => { libraryFilter = 'all'; renderLibrary(); });
   $('#library-watched').addEventListener('click', () => { libraryFilter = 'watched'; renderLibrary(); });
   $('#library-refresh').addEventListener('click', () => refreshLibrary({ all: true }));
-  for (const name of ['domain', 'horizon', 'tier']) $(`#track-${name}`).addEventListener('change', loadTrack);
+  for (const name of ['domain', 'horizon', 'tier']) $(`#track-${name}`).addEventListener('change', () => loadTrack());
   $('#form').addEventListener('input', () => saveDraft());
   $('#form').addEventListener('change', () => { renderContextSummary(); renderAdvancedSummary(); saveDraft(); });
   for (const id of ['advanced-options', 'forecast-context']) {
@@ -1510,7 +1597,7 @@
     setConnection('connected');
     if (!catalog || offlineCatalog) bootstrap();
     else if (currentPredictionId && !$('#view-progress').hidden) follow(currentPredictionId);
-    else if (!$('#view-form').hidden) { refreshLibrary(); loadTrack(); }
+    else if (!$('#view-form').hidden) { refreshLibrary(); loadHomeTrack(); }
   });
   window.addEventListener('focus', () => { if (catalog && !$('#view-form').hidden) refreshLibrary(); });
   setInterval(() => { if (catalog && !document.hidden && !$('#view-form').hidden) refreshLibrary(); }, 60000);

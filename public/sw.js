@@ -2,7 +2,7 @@
 // Service worker: face aplicația instalabilă. Totul vine întâi de la server; copiile din cache se folosesc
 // doar fără conexiune. API-ul nu se pune niciodată în cache, ca previziunile să fie mereu cele actuale.
 
-const VERSION = 'nostra-v10';
+const VERSION = 'nostra-v11';
 const SHELL = ['/', '/style.css', '/client-state.js', '/app.js', '/icon.svg', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

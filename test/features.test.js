@@ -50,6 +50,7 @@ test('o previziune privată nu apare public și nu împarte cache-ul cu cea publ
   const rec = await (await fetch(`${base}/api/p/${priv.id}`)).json();
   assert.equal(rec.request.private, true);
   assert.deepEqual(rec.history, []);
+  assert.equal(rec.comparison, null);
 });
 
 test('mesajele de eroare urmează limba interfeței', async () => {
@@ -71,15 +72,26 @@ test('aceeași întrebare la momente diferite formează un istoric', async () =>
   // Simulăm trecerea timpului: prima previziune are 4 ore.
   const saved = store.get(first.id);
   saved.createdAt = new Date(Date.now() - 4 * 3600000).toISOString();
+  delete saved.meta.asOf; // raport vechi, fără data de referință explicită
   store.update(saved);
   store.init();
   rec = await (await fetch(`${base}/api/p/${first.id}`)).json();
   assert.equal(rec.refreshable, true);
+  assert.equal(rec.forecastStart, saved.createdAt.slice(0, 10));
+  assert.equal(Date.parse(rec.forecastEnd) - Date.parse(rec.forecastStart), 7 * 86400000);
 
   const second = await (await post(body)).json();
   assert.equal(second.cached, false);
   await finish(second.id);
+  const updated = store.get(second.id);
+  const added = { title: 'Buletin nou', url: 'https://example.org/buletin' };
+  updated.prediction.sources[0].url += '#fragment';
+  updated.prediction.predictions[0].sources = [added, added];
+  store.update(updated);
   rec = await (await fetch(`${base}/api/p/${second.id}`)).json();
+  assert.deepEqual(rec.comparison, { previousId: first.id, addedSources: [added] });
+  const earlier = await (await fetch(`${base}/api/p/${first.id}`)).json();
+  assert.equal(earlier.comparison, null);
   assert.deepEqual(rec.history.map((h) => h.id), [first.id, second.id]);
   assert.equal(rec.history[1].base.probability, 55);
   assert.equal(rec.refreshable, false);

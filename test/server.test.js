@@ -157,13 +157,10 @@ test('catalogul acceptă exclusiv domenii și orizonturi proprii', async () => {
   }
 });
 
-test('prima pagină are butonul ASTRO-HOROSCOP către astrohor.fun, în aceeași filă', async () => {
+test('legătura spre Astrohoroscop rămâne în subsol', async () => {
   const html = await (await fetch(`${base}/`)).text();
-  const button = html.match(/<a id="astro-header"[^>]*>[^<]*<\/a>/)?.[0];
-  assert.ok(button, 'butonul există în antet');
-  assert.match(button, /href="https:\/\/astrohor\.fun\/"/);
-  assert.match(button, />ASTRO-HOROSCOP</);
-  assert.doesNotMatch(button, /target=/);
+  assert.doesNotMatch(html.match(/<header[\s\S]*?<\/header>/)[0], /astrohor\.fun/);
+  assert.match(html.match(/<footer[\s\S]*?<\/footer>/)[0], /href="https:\/\/astrohor\.fun\/"/);
 });
 
 test('subsolul are linkul Admin către pagina de autentificare', async () => {

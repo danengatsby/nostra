@@ -11,6 +11,8 @@ if (!underTest && fs.existsSync(envFile)) process.loadEnvFile(envFile);
 
 const express = require('express');
 const catalog = require('./lib/catalog');
+const { sourceKey } = require('./lib/schema');
+const { horizonEnd } = require('./lib/oracle');
 const store = require('./lib/store');
 const operations = require('./lib/operations');
 const jobs = require('./lib/jobs');
@@ -277,15 +279,33 @@ app.get('/api/predict/:id/events', (req, res) => {
   req.on('close', () => cleanup(false));
 });
 
+function reportSources(prediction) {
+  const sources = [...(prediction.sources || []), ...prediction.predictions.flatMap(claim => claim.sources || [])];
+  const unique = new Map();
+  for (const source of sources) {
+    const key = sourceKey(source.url);
+    if (key && !unique.has(key)) unique.set(key, source);
+  }
+  return unique;
+}
+
 app.get('/api/p/:id', (req, res) => {
   const rec = store.get(req.params.id);
   if (!rec) return res.status(404).json({ error: t('notFound', uiLang(req.query.ui)) });
   const { id, createdAt, request, prediction, meta, verification } = rec;
   // Aceeași întrebare pusă la momente diferite: cum s-a schimbat scenariul de bază (doar previziuni publice).
   const series = request.private ? [] : store.series(request, rec.key.endsWith('|lite') ? 'lite' : 'main');
+  const index = series.findIndex(s => s.id === id);
+  const previousId = series[index - 1]?.id;
+  let comparison = null;
   const history = series.length > 1 ? series.map((s) => {
     const r = s.id === id ? rec : store.get(s.id);
     const base = r?.prediction.scenarios?.[0];
+    if (s.id === previousId && base && prediction.scenarios?.[0]) {
+      const previousSources = reportSources(r.prediction);
+      const addedSources = [...reportSources(prediction)].filter(([key]) => !previousSources.has(key)).map(([, source]) => source);
+      comparison = { previousId, addedSources };
+    }
     return { id: s.id, createdAt: s.createdAt, base: base ? { name: base.name, probability: base.probability } : null };
   }) : [];
   // Se poate cere o versiune nouă când cea mai recentă din serie a ieșit din cache.
@@ -297,7 +317,9 @@ app.get('/api/p/:id', (req, res) => {
   const dates = prediction.predictions.map((claim, i) => verify.nextCheckTime(rec, claim, items.get(i))).filter(Number.isFinite);
   res.json({
     nextCheckAt: dates.length && process.env.VERIFY_ENABLED !== '0' ? new Date(Math.min(...dates)).toISOString() : null,
-    id, createdAt, request, prediction, history, refreshable, refunded: meta.refunded === true,
+    forecastStart: (meta.asOf || createdAt).slice(0, 10),
+    forecastEnd: horizonEnd(catalog.HORIZON[request.horizon].days, new Date(meta.asOf || createdAt)),
+    id, createdAt, request, prediction, history, comparison, refreshable, refunded: meta.refunded === true,
     // Pentru fiecare afirmație: data verificării și, dacă a fost verificată, rezultatul.
     checks: prediction.predictions.map((p, i) => {
       const it = items.get(i);

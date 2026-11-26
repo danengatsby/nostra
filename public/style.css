@@ -143,6 +143,8 @@ textarea:focus, select:focus { border-color: var(--gold); outline: none; }
 .question-links { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .example-link { font-size: .85rem; white-space: nowrap; }
 .context-edit { font-size: .8rem; color: var(--gold); }
+.report-dates span { display: block; }
+.edition-change { padding-bottom: 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .r-head .report-action { margin-top: 14px; }
 .draft-tools, .personal-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .draft-tools { justify-content: space-between; margin-top: 10px; }
@@ -151,7 +153,10 @@ textarea:focus, select:focus { border-color: var(--gold); outline: none; }
 .network-warning p { margin: 0 0 10px; }
 .example-banner { border-color: var(--gold); }
 .example-banner p { margin: 8px 0 0; }
-.personal { margin-top: 32px; }
+.featured-verdict { margin-top: 24px; overflow-wrap: anywhere; }
+.featured-verdict h2 { font-size: 1.3rem; }
+.featured-verdict p { margin: 8px 0; }
+.personal { margin-top: 24px; }
 .personal > .hint { margin-bottom: 12px; }
 .personal-list { list-style: none; padding: 0; display: grid; gap: 10px; }
 .personal-list > li { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); overflow-wrap: anywhere; }
@@ -319,8 +324,6 @@ textarea:focus, select:focus { border-color: var(--gold); outline: none; }
 .header-tools { position: absolute; top: 14px; right: 16px; display: flex; gap: 8px; }
 .btn-small { font: 600 .8rem var(--sans); color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
 .btn-small:hover { border-color: var(--gold); }
-.btn-astro { background: #ffda44; color: #211a08; border-color: #b18b15; letter-spacing: .04em; text-decoration: none; }
-.btn-astro:hover { background: #ffe576; border-color: #95720d; }
 .btn-compact { padding: 8px 14px; font-size: .9rem; }
 
 /* Efortul oracolului */
